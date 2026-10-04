@@ -21,7 +21,6 @@ button.on{background:var(--acc,#3d7de8);border-color:transparent;color:#fff;font
 #side [data-v=t].on,#side [data-v=ct].on{color:#101318}
 #loc button{min-width:64px}
 main{padding:10px 12px 48px;max-width:1800px;margin:0 auto}
-h2{font-size:15px;font-weight:600;color:var(--dim);margin:4px 0 10px}
 nav{margin-bottom:14px}
 nav button{padding:4px 10px;font-size:13px}
 article{margin:0 0 24px;scroll-margin-top:100px}
@@ -86,9 +85,6 @@ async function render(){
   [["#maps","map"],["#side","side"],["#loc","loc"]].forEach(([id,k])=>
     document.querySelectorAll(id+" button").forEach(b=>b.classList.toggle("on",b.dataset.v==st[k])));
   const out=$("#out"); out.replaceChildren();
-  const h=document.createElement("h2");
-  h.textContent=[MAPS,SIDES,LOCS].map((a,i)=>a.find(x=>x[0]==st[["map","side","loc"][i]])[1]).join(" / ");
-  out.append(h);
   let doc;
   try{doc=docs[st.map]||(docs[st.map]=await load(st.map))}
   catch(e){if(t==tok)out.append(note("No file for this map yet: add maps/"+st.map+".html"));return}
