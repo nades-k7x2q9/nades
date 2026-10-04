@@ -61,7 +61,7 @@ h3{font-size:17px;font-weight:600;margin:0 0 8px}
 const MAPS=[["mirage","Mirage"],["inferno","Inferno"],["nuke","Nuke"],["ancient","Ancient"],["dust2","Dust II"],["anubis","Anubis"],["cache","Cache"],["vertigo","Vertigo"]];
 const SIDES=[["ct","CT"],["t","T"]], LOCS=[["instant","Instant"],["a","A"],["b","B"],["mid","Mid"]];
 const $=s=>document.querySelector(s), docs={}, ids=a=>a.map(x=>x[0]);
-let st={map:"mirage",side:"t",loc:"instant"}, tok=0, group=[], gi=0, keepY=null;
+let st={map:"mirage",side:"t",loc:"instant"}, tok=0, group=[], gi=0, keepY=null, local={};   // local: repo path -> blob URL of just-uploaded images (shown until the site rebuilds)
 
 function mk(box,list,key){
   list.forEach(([v,l])=>{const b=document.createElement("button");b.textContent=l;b.dataset.v=v;
@@ -101,6 +101,7 @@ async function render(){
     const c=a.cloneNode(true);
     c.querySelectorAll("img").forEach(i=>i.loading="lazy");
     if(window.addDel)addDel(c);
+    c.querySelectorAll("img").forEach(i=>{const u=local[i.getAttribute("src")];if(u)i.src=u});
     out.append(c);
     const b=document.createElement("button");b.textContent=c.querySelector("h3").textContent;
     b.onclick=()=>c.scrollIntoView({behavior:"smooth"});nav.append(b);
@@ -155,6 +156,11 @@ const moveImg=(t,src,title,from,to,n)=>{   // reorder the <img> tags inside one 
 const retitle=(t,src,title,old)=>{const [a,z]=locate(t,src,old),blk=t.slice(a,z),
   nb=blk.replace(/(<h3[^>]*>)[\s\S]*?(<\/h3>)/i,(m,o,c)=>o+esc(title)+c);
   if(nb==blk)throw new Error("Title not found");return t.slice(0,a)+nb+t.slice(z)};
+const norm=s=>{s=s.replace(/&amp;/g,"&");try{s=decodeURIComponent(s)}catch(e){}return s.replace(/^\.?\//,"")};
+const srcsOf=h=>[...h.matchAll(/<img\b[^>]*?\bsrc\s*=\s*["']?([^"'\s>]+)/gi)].map(m=>norm(m[1]));
+const ownImgs=(t,src,title)=>{   // image files used only by this lineup (safe to delete along with it)
+  const [a,z]=locate(t,src,title),keep=new Set(srcsOf(t.slice(0,a)+t.slice(z)));
+  return [...new Set(srcsOf(t.slice(a,z)))].filter(p=>/^img\/[^?#]+$/.test(p)&&!p.includes("..")&&!keep.has(p))};
 // TEXTOPS-END
 const P=new URLSearchParams(location.search), EDIT=!P.has("view")&&P.has("edit"), MAXW=1600;
 if(EDIT){
@@ -168,20 +174,50 @@ if(EDIT){
   idle(); addEventListener("hashchange",()=>{if(!pending.length)idle()});
   const tok=()=>{let t="";try{t=localStorage.getItem("nades-token")||""}catch(e){}
     if(!t){t=(prompt("Paste your GitHub token once (kept only in this browser):")||"").trim();try{if(t)localStorage.setItem("nades-token",t)}catch(e){}}return t};
-  async function api(path,opt={}){
-    const r=await fetch(`https://api.github.com/repos/${R}/contents/${path}`,{...opt,headers:{Authorization:"Bearer "+tok(),Accept:"application/vnd.github+json","Content-Type":"application/json"}});
-    if(!r.ok){if(r.status==401)try{localStorage.removeItem("nades-token")}catch(e){};throw new Error(r.status+" "+(await r.text()).slice(0,150))}
+  // GH-START
+  let br=null;
+  async function gh(path,opt={}){
+    const r=await fetch(`https://api.github.com/repos/${R}${path?"/"+path:""}`,{cache:"no-store",...opt,headers:{Authorization:"Bearer "+tok(),Accept:"application/vnd.github+json","Content-Type":"application/json"}});
+    if(!r.ok){if(r.status==401)try{localStorage.removeItem("nades-token")}catch(e){};const e=new Error(r.status+" "+(await r.text()).slice(0,150));e.status=r.status;throw e}
     return r.json();
   }
-  const put=(path,content,message,sha)=>api(path,{method:"PUT",body:JSON.stringify({message,content,sha})});
-  const mutate=async(map,fn,msg)=>{const f=await api(`maps/${map}.html`,{cache:"no-store"});await put(`maps/${map}.html`,b64(fn(dec(f.content))),msg,f.sha)};
+  // One atomic commit per action (new images + map file + deletions together = one site rebuild).
+  // plan(ctx) returns {write:{path:{text}|{b64}}, del:[paths]}. If the branch moved meanwhile, it re-plans and retries.
+  async function commit(msg,plan){
+    const blobs={};
+    for(let n=0;;n++){
+      br=br||await gh("").then(r=>r.default_branch,()=>"main");
+      const head=(await gh(`git/ref/heads/${br}`)).object.sha, base=(await gh(`git/commits/${head}`)).tree.sha;
+      const listDir=async dir=>{let sha=base;
+        for(const seg of dir.split("/")){const e=(await gh(`git/trees/${sha}`)).tree.find(x=>x.path==seg&&x.type=="tree");if(!e)return new Set();sha=e.sha}
+        return new Set((await gh(`git/trees/${sha}`)).tree.filter(x=>x.type=="blob").map(x=>x.path))};
+      const {write={},del=[]}=await plan({read:async p=>dec((await gh(`contents/${p}?ref=${head}`)).content),files:listDir});
+      const tree=[], ks=Object.keys(write), nimg=ks.filter(p=>write[p].b64!=null).length;
+      for(const p of ks){
+        const v=write[p];
+        if(v.text!=null){tree.push({path:p,mode:"100644",type:"blob",content:v.text});continue}
+        if(!blobs[p]){say(`Uploading image ${Object.keys(blobs).length+1} of ${nimg}...`);
+          blobs[p]=(await gh("git/blobs",{method:"POST",body:JSON.stringify({content:v.b64,encoding:"base64"})})).sha}
+        tree.push({path:p,mode:"100644",type:"blob",sha:blobs[p]});
+      }
+      del.forEach(p=>tree.push({path:p,mode:"100644",type:"blob",sha:null}));
+      if(!tree.length)return;
+      say("Committing...");
+      const nt=await gh("git/trees",{method:"POST",body:JSON.stringify({base_tree:base,tree})});
+      const nc=await gh("git/commits",{method:"POST",body:JSON.stringify({message:msg,tree:nt.sha,parents:[head]})});
+      try{await gh(`git/refs/heads/${br}`,{method:"PATCH",body:JSON.stringify({sha:nc.sha})});return}
+      catch(e){if(e.status!=422||n>=2)throw e}
+    }
+  }
+  const mutate=(map,fn,msg)=>commit(msg,async ctx=>({write:{[`maps/${map}.html`]:{text:fn(await ctx.read(`maps/${map}.html`))}}}));
+  // GH-END
   const cached=(map,src)=>[...(docs[map]?docs[map].querySelectorAll("article"):[])].find(x=>x.querySelector("img")?.getAttribute("src")==src);
   async function shrink(f){
     const bm=await createImageBitmap(f), k=Math.min(1,MAXW/bm.width), c=document.createElement("canvas");
     c.width=Math.round(bm.width*k);c.height=Math.round(bm.height*k);
     c.getContext("2d").drawImage(bm,0,0,c.width,c.height);
     const b=await new Promise(r=>c.toBlob(r,"image/jpeg",.82));
-    return b64(new Uint8Array(await b.arrayBuffer()));
+    return {b64:b64(new Uint8Array(await b.arrayBuffer())),url:URL.createObjectURL(b)};
   }
   function paint(){
     $("#df").hidden=!pending.length; $("#dth").replaceChildren();
@@ -189,13 +225,12 @@ if(EDIT){
       im.title="Click to remove";im.onclick=()=>{pending.splice(i,1);paint()};$("#dth").append(im)});
     pending.length?say(`Adding ${pending.length} image(s) to ${label(dest)}`):idle();
   }
-  async function live(map,url){   // after saving, wait for the site rebuild, then show the new lineup
+  async function live(url){   // just a status check: wait until the rebuilt site serves the new file
     for(let i=0;i<36;i++){
       await new Promise(r=>setTimeout(r,5000));
-      try{const r=await fetch(url+"?t="+Date.now(),{cache:"no-store"});
-        if(r.ok){delete docs[map];render();return say("Live. Your lineup is now on the page.")}}catch(e){}
+      try{const r=await fetch(url+"?t="+Date.now(),{cache:"no-store"});if(r.ok){if(!pending.length)say("Live on the site.");return}}catch(e){}
     }
-    say("Saved, but the site is still rebuilding. Reload in a minute.");
+    if(!pending.length)say("Saved, but the site is still rebuilding. Reload in a minute or two.");
   }
   addEventListener("dragover",e=>e.preventDefault());
   const addFiles=fs=>{
@@ -211,6 +246,21 @@ if(EDIT){
     if(!fs.length)fs=[...cd.items].filter(i=>i.kind=="file").map(i=>i.getAsFile());
     if(addFiles(fs))e.preventDefault();
   });
+  const cl=document.createElement("button");cl.textContent="Clean up unused images";cl.style.cssText="font-size:12px;margin-bottom:8px";
+  cl.title="Delete files in img/<map>/ that no lineup on this map uses";$("#dh").after(cl);
+  cl.onclick=async()=>{
+    const map=st.map; let n=0;
+    try{
+      say(`Checking img/${map}/ ...`);
+      await commit("Remove unused images: "+map,async ctx=>{
+        const dir=`img/${map}`,used=new Set(srcsOf(await ctx.read(`maps/${map}.html`))),files=await ctx.files(dir);
+        const del=[...files].filter(f=>/\.(jpe?g|png|webp|gif)$/i.test(f)&&!used.has(`${dir}/${f}`)).map(f=>`${dir}/${f}`);
+        if(!del.length){say(`No unused images in ${dir}/.`);return {}}
+        if(!confirm(`Permanently delete ${del.length} unused image file(s) from ${dir}/ ?\n\n`+del.slice(0,8).map(x=>x.split("/").pop()).join("\n")+(del.length>8?"\n...":""))){say("Cancelled.");return {}}
+        n=del.length;return {del}});
+      if(n)say(`Removed ${n} unused image(s) from ${map}. The live site updates in about a minute.`);
+    }catch(err){say("Failed: "+err.message)}
+  };
   $("#dc").onclick=()=>{pending=[];$("#dt").value="";paint()};
   $("#dk").onclick=()=>{try{localStorage.removeItem("nades-token")}catch(e){};tok()};
   $("#ds").onclick=async()=>{
@@ -220,17 +270,22 @@ if(EDIT){
     const {map,side,loc}=dest, id=Date.now().toString(36),
       slug=title.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,40)||"lineup";
     try{
-      const names=[];
+      const names=[], write={}, urls={};
       for(let i=0;i<pending.length;i++){
-        say(`Uploading image ${i+1} of ${pending.length}...`);
-        const n=`${side}-${loc}-${slug}-${id}-${i+1}.jpg`;
-        await put(`img/${map}/${n}`,await shrink(pending[i]),"Add image "+n); names.push(n);
+        say(`Preparing image ${i+1} of ${pending.length}...`);
+        const n=`${side}-${loc}-${slug}-${id}-${i+1}.jpg`, p=`img/${map}/${n}`, o=await shrink(pending[i]);
+        write[p]={b64:o.b64}; urls[p]=o.url; names.push(n);
       }
-      say("Updating the map file...");
-      await mutate(map,t=>addTo(t,side,loc,mkArt(title,map,names)),"Add lineup: "+title);
+      const art=mkArt(title,map,names), mp=`maps/${map}.html`;
+      await commit("Add lineup: "+title,async ctx=>{   // map file is checked first, so a bad section never leaves orphan images
+        write[mp]={text:addTo(await ctx.read(mp),side,loc,art)};return {write}});
+      Object.assign(local,urls);   // show the new lineup right away from the local copies
+      if(docs[map]){const sec=docs[map].querySelector(`section[data-side="${side}"][data-loc="${loc}"]`);
+        if(sec){const tp=document.createElement("template");tp.innerHTML=art;sec.append(tp.content.firstElementChild)}}
       pending=[];$("#dt").value="";paint();
-      say("Saved. Waiting for the site to rebuild (about a minute)...");
-      live(map,`img/${map}/${names[0]}`);
+      if(st.map==map&&st.side==side&&st.loc==loc)render();
+      say("Saved in a single commit. Shown here already; the live site updates in about a minute...");
+      live(`img/${map}/${names[0]}`);
     }catch(err){say("Failed: "+err.message)}
   };
   window.addDel=c=>{
@@ -244,8 +299,15 @@ if(EDIT){
       const a=cached(map,src); if(a)a.querySelector("h3").textContent=nt; render();
     });
     mk2("Delete",async()=>{
-      if(!confirm('Delete "'+h.textContent+'"?'))return;
-      await mutate(map,t=>dropAt(t,src,h.textContent),"Delete lineup"); cached(map,src)?.remove(); render();
+      const title=h.textContent;
+      if(!confirm('Delete "'+title+'" and its image files from the repository?'))return;
+      say("Deleting..."); let n=0;
+      await commit("Delete lineup: "+title,async ctx=>{
+        const p=`maps/${map}.html`,t=await ctx.read(p),del=[],dirs={};
+        for(const f of ownImgs(t,src,title)){const d=f.slice(0,f.lastIndexOf("/"));dirs[d]=dirs[d]||await ctx.files(d);if(dirs[d].has(f.slice(d.length+1)))del.push(f)}
+        n=del.length;return {write:{[p]:{text:dropAt(t,src,title)}},del}});
+      cached(map,src)?.remove(); render();
+      say(`Deleted. ${n} image file(s) removed from the repository. The live site updates in about a minute.`);
     });
     const half=(e,el,vert)=>{const r=el.getBoundingClientRect();return vert?e.clientY<r.top+r.height/2:e.clientX<r.left+r.width/2};
     const saved=()=>say("Order saved. The live site updates in about a minute; it is already shown here.");
