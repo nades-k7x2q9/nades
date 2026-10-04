@@ -135,14 +135,21 @@ const b64=s=>{let o="";for(const x of (typeof s=="string"?new TextEncoder().enco
 const mkArt=(title,map,names)=>`<article>\n  <h3>${esc(title)}</h3>\n  <div class="shots">\n${names.map(n=>`    <img src="img/${map}/${n}">`).join("\n")}\n  </div>\n</article>\n`;
 const addTo=(t,side,loc,art)=>{const o=t.indexOf(`<section data-side="${side}" data-loc="${loc}">`),e=o<0?-1:t.indexOf("</section>",o);
   if(e<0)throw new Error("Section not found in map file");return t.slice(0,e)+art+t.slice(e)};
-const locate=(t,src)=>{const k=t.indexOf(`src="${src}"`),a=t.lastIndexOf("<article",k),z=t.indexOf("</article>",k);
-  if(k<0||a<0||z<0)throw new Error("Lineup not found in map file");return [a,z+10]};
-const dropAt=(t,src)=>{const [a,z]=locate(t,src);return t.slice(0,a)+t.slice(z).replace(/^\n/,"")};
-const retitle=(t,src,title)=>{const [a,z]=locate(t,src),h=t.indexOf("<h3>",a),e=t.indexOf("</h3>",h);
-  if(h<0||h>z||e<0)throw new Error("Title not found");return t.slice(0,h+4)+esc(title)+t.slice(e)};
+const rx=s=>s.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+const locate=(t,src,title)=>{   // find the <article> block: by image src (any quote style/spacing), else by <h3> title
+  const bs=[...t.matchAll(/<article\b[\s\S]*?<\/article>/gi)].map(m=>[m.index,m.index+m[0].length]);
+  const sr=new RegExp(`src\\s*=\\s*["']?(?:\\./|/)?(?:${rx(src)}|${rx(esc(src))})(?=["'\\s>/])`,"i");
+  let b=bs.find(([a,z])=>sr.test(t.slice(a,z)));
+  if(!b&&title){const w=title.trim();
+    b=bs.find(([a,z])=>{const m=/<h3[^>]*>([\s\S]*?)<\/h3>/i.exec(t.slice(a,z));return m&&(m[1].trim()==w||m[1].trim()==esc(w))})}
+  if(!b)throw new Error("Lineup not found in map file");
+  return b};
+const dropAt=(t,src,title)=>{const [a,z]=locate(t,src,title);return t.slice(0,a)+t.slice(z).replace(/^\n/,"")};
+const retitle=(t,src,title,old)=>{const [a,z]=locate(t,src,old),blk=t.slice(a,z),
+  nb=blk.replace(/(<h3[^>]*>)[\s\S]*?(<\/h3>)/i,(m,o,c)=>o+esc(title)+c);
+  if(nb==blk)throw new Error("Title not found");return t.slice(0,a)+nb+t.slice(z)};
 // TEXTOPS-END
-let tk=null;try{tk=localStorage.getItem("nades-token")}catch(e){}
-const P=new URLSearchParams(location.search), EDIT=!P.has("view")&&(P.has("edit")||!!tk), MAXW=1600;
+const P=new URLSearchParams(location.search), EDIT=!P.has("view")&&P.has("edit"), MAXW=1600;
 if(EDIT){
   const R=`${location.hostname.split(".")[0]}/${location.pathname.split("/")[1]}`;
   const label=s=>[MAPS,SIDES,LOCS].map((a,i)=>a.find(x=>x[0]==s[["map","side","loc"][i]])[1]).join(" / ");
@@ -219,12 +226,12 @@ if(EDIT){
       b.onclick=async()=>{try{await fn()}catch(err){say("Failed: "+err.message)}};row.append(b)};
     mk2("Rename",async()=>{
       const nt=(prompt("New title:",h.textContent)||"").trim().replace(/\s+/g," "); if(!nt||nt==h.textContent)return;
-      await mutate(map,t=>retitle(t,src,nt),"Rename lineup");
+      await mutate(map,t=>retitle(t,src,nt,h.textContent),"Rename lineup");
       const a=cached(map,src); if(a)a.querySelector("h3").textContent=nt; render();
     });
     mk2("Delete",async()=>{
       if(!confirm('Delete "'+h.textContent+'"?'))return;
-      await mutate(map,t=>dropAt(t,src),"Delete lineup"); cached(map,src)?.remove(); render();
+      await mutate(map,t=>dropAt(t,src,h.textContent),"Delete lineup"); cached(map,src)?.remove(); render();
     });
     h.after(row);
   };
