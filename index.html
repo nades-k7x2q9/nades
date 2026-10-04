@@ -164,7 +164,7 @@ if(EDIT){
   const clearMarks=()=>document.querySelectorAll(".drop-before,.drop-after").forEach(x=>x.classList.remove("drop-before","drop-after"));
   $("#draft").hidden=false;
   const say=m=>$("#dh").textContent=m;
-  const idle=()=>say(`Edit mode: drop images anywhere on this page to add a lineup to ${label(st)}. Drag "Move" to reorder lineups, or drag an image to reorder within its lineup.`);
+  const idle=()=>say(`Edit mode: drop or paste (Ctrl+V) images anywhere on this page to add a lineup to ${label(st)}. Drag "Move" to reorder lineups, or drag an image to reorder within its lineup.`);
   idle(); addEventListener("hashchange",()=>{if(!pending.length)idle()});
   const tok=()=>{let t="";try{t=localStorage.getItem("nades-token")||""}catch(e){}
     if(!t){t=(prompt("Paste your GitHub token once (kept only in this browser):")||"").trim();try{if(t)localStorage.setItem("nades-token",t)}catch(e){}}return t};
@@ -198,12 +198,18 @@ if(EDIT){
     say("Saved, but the site is still rebuilding. Reload in a minute.");
   }
   addEventListener("dragover",e=>e.preventDefault());
-  addEventListener("drop",e=>{
-    e.preventDefault();
-    const fs=[...e.dataTransfer.files].filter(f=>f.type.startsWith("image/")); if(!fs.length)return;
+  const addFiles=fs=>{
+    fs=fs.filter(f=>f&&f.type.startsWith("image/")); if(!fs.length)return false;
     if(!pending.length)dest={...st};
     pending=pending.concat(fs).sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true}));
-    paint();$("#dt").focus();
+    paint();$("#dt").focus();return true;
+  };
+  addEventListener("drop",e=>{e.preventDefault();addFiles([...e.dataTransfer.files])});
+  addEventListener("paste",e=>{   // Ctrl+V of an image (screenshot or copied file); plain text pastes are left alone
+    const cd=e.clipboardData; if(!cd)return;
+    let fs=[...cd.files];
+    if(!fs.length)fs=[...cd.items].filter(i=>i.kind=="file").map(i=>i.getAsFile());
+    if(addFiles(fs))e.preventDefault();
   });
   $("#dc").onclick=()=>{pending=[];$("#dt").value="";paint()};
   $("#dk").onclick=()=>{try{localStorage.removeItem("nades-token")}catch(e){};tok()};
