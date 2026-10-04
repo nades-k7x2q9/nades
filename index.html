@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CS2 Nades</title>
+<style>
+:root{--bg:#14171c;--panel:#1c2128;--line:#2e3641;--txt:#e9edf2;--dim:#98a3b3;--ct:#5aa9ff;--t:#f2b53a}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.4 "Segoe UI",system-ui,sans-serif}
+[hidden]{display:none!important}
+header{position:sticky;top:0;z-index:5;background:var(--panel);border-bottom:1px solid var(--line);padding:8px;display:grid;gap:6px}
+.row{display:flex;gap:6px;flex-wrap:wrap}
+.sep{width:14px}
+button{font:inherit;color:var(--txt);background:#262d38;border:1px solid var(--line);border-radius:5px;padding:7px 13px;cursor:pointer}
+button:hover{background:#323b49}
+button.on{background:var(--acc,#3d7de8);border-color:transparent;color:#fff;font-weight:600}
+#maps button{flex:1 1 0;min-width:72px}
+#side button{min-width:56px}
+#side [data-v=ct]{--acc:var(--ct);color:var(--txt)}
+#side [data-v=t]{--acc:var(--t)}
+#side [data-v=t].on,#side [data-v=ct].on{color:#101318}
+#loc button{min-width:64px}
+main{padding:10px 12px 48px;max-width:1800px;margin:0 auto}
+h2{font-size:15px;font-weight:600;color:var(--dim);margin:4px 0 10px}
+nav{margin-bottom:14px}
+nav button{padding:4px 10px;font-size:13px}
+article{margin:0 0 24px;scroll-margin-top:100px}
+h3{font-size:17px;font-weight:600;margin:0 0 8px}
+.shots{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:8px}
+.shots img{display:block;width:100%;border-radius:5px;background:#000;cursor:zoom-in}
+.msg{color:var(--dim)}
+#lb{position:fixed;inset:0;z-index:9;background:rgba(0,0,0,.92);display:grid;place-items:center;cursor:zoom-out}
+#lb img{max-width:98vw;max-height:98vh}
+</style></head>
+<body>
+<header>
+  <div class="row" id="maps"></div>
+  <div class="row"><span class="row" id="side"></span><span class="sep"></span><span class="row" id="loc"></span></div>
+</header>
+<main id="out"></main>
+<div id="lb" hidden><img alt=""></div>
+<script>
+// Edit this list to change the map pool (folder/file names must match: maps/<id>.html, img/<id>/)
+const MAPS=[["mirage","Mirage"],["inferno","Inferno"],["nuke","Nuke"],["ancient","Ancient"],["dust2","Dust II"],["anubis","Anubis"],["cache","Cache"],["vertigo","Vertigo"]];
+const SIDES=[["ct","CT"],["t","T"]], LOCS=[["instant","Instant"],["a","A"],["b","B"],["mid","Mid"]];
+const $=s=>document.querySelector(s), docs={}, ids=a=>a.map(x=>x[0]);
+let st={map:"mirage",side:"t",loc:"instant"}, tok=0, group=[], gi=0;
+
+function mk(box,list,key){
+  list.forEach(([v,l])=>{const b=document.createElement("button");b.textContent=l;b.dataset.v=v;
+    b.onclick=()=>go({[key]:v});$(box).append(b)});
+}
+mk("#maps",MAPS,"map");mk("#side",SIDES,"side");mk("#loc",LOCS,"loc");
+
+function go(p){const n={...st,...p};location.hash=`${n.map}/${n.side}/${n.loc}`}
+function parse(){
+  const [m,s,l]=location.hash.slice(1).split("/");
+  if(ids(MAPS).includes(m))st.map=m; if(ids(SIDES).includes(s))st.side=s; if(ids(LOCS).includes(l))st.loc=l;
+}
+async function load(m){
+  const r=await fetch(`maps/${m}.html`); if(!r.ok)throw 0;
+  return new DOMParser().parseFromString(await r.text(),"text/html");
+}
+function note(t){const p=document.createElement("p");p.className="msg";p.textContent=t;return p}
+
+async function render(){
+  parse(); const t=++tok;
+  try{localStorage.setItem("nades-last",location.hash)}catch(e){}
+  [["#maps","map"],["#side","side"],["#loc","loc"]].forEach(([id,k])=>
+    document.querySelectorAll(id+" button").forEach(b=>b.classList.toggle("on",b.dataset.v==st[k])));
+  const out=$("#out"); out.replaceChildren();
+  const h=document.createElement("h2");
+  h.textContent=[MAPS,SIDES,LOCS].map((a,i)=>a.find(x=>x[0]==st[["map","side","loc"][i]])[1]).join(" / ");
+  out.append(h);
+  let doc;
+  try{doc=docs[st.map]||(docs[st.map]=await load(st.map))}
+  catch(e){if(t==tok)out.append(note("No file for this map yet: add maps/"+st.map+".html"));return}
+  if(t!=tok)return;
+  const sec=doc.querySelector(`section[data-side="${st.side}"][data-loc="${st.loc}"]`);
+  const arts=sec?[...sec.querySelectorAll("article")]:[];
+  if(!arts.length){out.append(note("No lineups here yet."));return}
+  const nav=document.createElement("nav");nav.className="row";out.append(nav);
+  arts.forEach(a=>{
+    const c=a.cloneNode(true);
+    c.querySelectorAll("img").forEach(i=>i.loading="lazy");
+    out.append(c);
+    const b=document.createElement("button");b.textContent=c.querySelector("h3").textContent;
+    b.onclick=()=>c.scrollIntoView({behavior:"smooth"});nav.append(b);
+  });
+  scrollTo(0,0);
+}
+
+// Click an image to enlarge; click again or press Esc to close; arrow keys flip through that lineup's images
+const lb=$("#lb");
+function show(){$("#lb img").src=group[gi].src;lb.hidden=false}
+document.addEventListener("click",e=>{
+  const i=e.target.closest("#out img"); if(!i)return;
+  group=[...i.closest("article").querySelectorAll("img")]; gi=group.indexOf(i); show();
+});
+lb.onclick=()=>lb.hidden=true;
+
+// Optional keyboard shortcuts: 1-8 map, C/T side, I/A/B/M location
+addEventListener("keydown",e=>{
+  if(e.ctrlKey||e.altKey||e.metaKey)return;
+  const k=e.key.toLowerCase();
+  if(!lb.hidden){
+    if(k=="escape")lb.hidden=true;
+    if(k=="arrowright"){gi=(gi+1)%group.length;show()}
+    if(k=="arrowleft"){gi=(gi-1+group.length)%group.length;show()}
+    return;
+  }
+  if(/^[1-8]$/.test(k)&&MAPS[k-1])go({map:MAPS[k-1][0]});
+  else if(k=="c")go({side:"ct"}); else if(k=="t")go({side:"t"});
+  else if(k=="i")go({loc:"instant"}); else if(k=="a")go({loc:"a"});
+  else if(k=="b")go({loc:"b"}); else if(k=="m")go({loc:"mid"});
+});
+
+addEventListener("hashchange",render);
+if(!location.hash){try{const l=localStorage.getItem("nades-last");if(l)history.replaceState(null,"",l)}catch(e){}}
+render();
+</script>
+</body></html>
