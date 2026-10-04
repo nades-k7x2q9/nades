@@ -27,7 +27,13 @@ nav button{padding:4px 10px;font-size:13px}
 article{margin:0 0 24px;scroll-margin-top:100px}
 h3{font-size:17px;font-weight:600;margin:0 0 8px}
 .shots{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
-.shots img{display:block;width:100%;border-radius:5px;background:#000;cursor:zoom-in}
+.shots img{display:block;width:100%;aspect-ratio:auto 16/9;border-radius:5px;background:#000;cursor:zoom-in}
+.handle{padding:4px 10px;font-size:12px;border:1px solid var(--line);border-radius:5px;background:#262d38;cursor:grab;user-select:none}
+.dragging{opacity:.4}
+.drop-before{box-shadow:0 -4px 0 var(--ct)}
+.drop-after{box-shadow:0 4px 0 var(--ct)}
+.shots img.drop-before{box-shadow:-5px 0 0 var(--ct)}
+.shots img.drop-after{box-shadow:5px 0 0 var(--ct)}
 .msg{color:var(--dim)}
 #lb{position:fixed;inset:0;z-index:9;background:rgba(0,0,0,.92);display:grid;place-items:center;cursor:zoom-out}
 #lb img{max-width:98vw;max-height:98vh}
@@ -55,7 +61,7 @@ h3{font-size:17px;font-weight:600;margin:0 0 8px}
 const MAPS=[["mirage","Mirage"],["inferno","Inferno"],["nuke","Nuke"],["ancient","Ancient"],["dust2","Dust II"],["anubis","Anubis"],["cache","Cache"],["vertigo","Vertigo"]];
 const SIDES=[["ct","CT"],["t","T"]], LOCS=[["instant","Instant"],["a","A"],["b","B"],["mid","Mid"]];
 const $=s=>document.querySelector(s), docs={}, ids=a=>a.map(x=>x[0]);
-let st={map:"mirage",side:"t",loc:"instant"}, tok=0, group=[], gi=0;
+let st={map:"mirage",side:"t",loc:"instant"}, tok=0, group=[], gi=0, keepY=null;
 
 function mk(box,list,key){
   list.forEach(([v,l])=>{const b=document.createElement("button");b.textContent=l;b.dataset.v=v;
@@ -99,7 +105,7 @@ async function render(){
     const b=document.createElement("button");b.textContent=c.querySelector("h3").textContent;
     b.onclick=()=>c.scrollIntoView({behavior:"smooth"});nav.append(b);
   });
-  scrollTo(0,0);
+  if(keepY==null)scrollTo(0,0);else{scrollTo(0,keepY);keepY=null}
 }
 
 // Click an image to enlarge; click again or press Esc to close; arrow keys flip through that lineup's images
@@ -111,20 +117,13 @@ document.addEventListener("click",e=>{
 });
 lb.onclick=()=>lb.hidden=true;
 
-// Optional keyboard shortcuts: 1-8 map, C/T side, I/A/B/M location
+// Keyboard: only used inside the image viewer (Esc / arrows). No key ever changes the page.
 addEventListener("keydown",e=>{
-  if(e.ctrlKey||e.altKey||e.metaKey)return;
+  if(lb.hidden||e.ctrlKey||e.altKey||e.metaKey)return;
   const k=e.key.toLowerCase();
-  if(!lb.hidden){
-    if(k=="escape")lb.hidden=true;
-    if(k=="arrowright"){gi=(gi+1)%group.length;show()}
-    if(k=="arrowleft"){gi=(gi-1+group.length)%group.length;show()}
-    return;
-  }
-  if(/^[1-8]$/.test(k)&&MAPS[k-1])go({map:MAPS[k-1][0]});
-  else if(k=="c")go({side:"ct"}); else if(k=="t")go({side:"t"});
-  else if(k=="i")go({loc:"instant"}); else if(k=="a")go({loc:"a"});
-  else if(k=="b")go({loc:"b"}); else if(k=="m")go({loc:"mid"});
+  if(k=="escape")lb.hidden=true;
+  if(k=="arrowright"){gi=(gi+1)%group.length;show()}
+  if(k=="arrowleft"){gi=(gi-1+group.length)%group.length;show()}
 });
 
 // ---- Edit mode: drag-drop images, add/rename/delete lineups, saved straight to the repo ----
@@ -145,6 +144,14 @@ const locate=(t,src,title)=>{   // find the <article> block: by image src (any q
   if(!b)throw new Error("Lineup not found in map file");
   return b};
 const dropAt=(t,src,title)=>{const [a,z]=locate(t,src,title);return t.slice(0,a)+t.slice(z).replace(/^\n/,"")};
+const moveArt=(t,sa,ta,sb,tb,before)=>{   // move lineup A before/after lineup B
+  const [a,z]=locate(t,sa,ta),blk=t.slice(a,z),r=t.slice(0,a)+t.slice(z).replace(/^\n/,""),[c,d]=locate(r,sb,tb);
+  return before?r.slice(0,c)+blk+"\n"+r.slice(c):r.slice(0,d)+"\n"+blk+r.slice(d)};
+const moveImg=(t,src,title,from,to,n)=>{   // reorder the <img> tags inside one lineup
+  const [a,z]=locate(t,src,title),blk=t.slice(a,z),arr=blk.match(/<img\b[^>]*>/gi)||[];
+  if(arr.length!=n)throw new Error("Image count in map file differs from the page. Reload and try again");
+  arr.splice(to,0,arr.splice(from,1)[0]);let k=0;
+  return t.slice(0,a)+blk.replace(/<img\b[^>]*>/gi,()=>arr[k++])+t.slice(z)};
 const retitle=(t,src,title,old)=>{const [a,z]=locate(t,src,old),blk=t.slice(a,z),
   nb=blk.replace(/(<h3[^>]*>)[\s\S]*?(<\/h3>)/i,(m,o,c)=>o+esc(title)+c);
   if(nb==blk)throw new Error("Title not found");return t.slice(0,a)+nb+t.slice(z)};
@@ -153,10 +160,11 @@ const P=new URLSearchParams(location.search), EDIT=!P.has("view")&&P.has("edit")
 if(EDIT){
   const R=`${location.hostname.split(".")[0]}/${location.pathname.split("/")[1]}`;
   const label=s=>[MAPS,SIDES,LOCS].map((a,i)=>a.find(x=>x[0]==s[["map","side","loc"][i]])[1]).join(" / ");
-  let pending=[], dest=null;
+  let pending=[], dest=null, drag=null;
+  const clearMarks=()=>document.querySelectorAll(".drop-before,.drop-after").forEach(x=>x.classList.remove("drop-before","drop-after"));
   $("#draft").hidden=false;
   const say=m=>$("#dh").textContent=m;
-  const idle=()=>say(`Edit mode: drop images anywhere on this page to add a lineup to ${label(st)}`);
+  const idle=()=>say(`Edit mode: drop images anywhere on this page to add a lineup to ${label(st)}. Drag "Move" to reorder lineups, or drag an image to reorder within its lineup.`);
   idle(); addEventListener("hashchange",()=>{if(!pending.length)idle()});
   const tok=()=>{let t="";try{t=localStorage.getItem("nades-token")||""}catch(e){}
     if(!t){t=(prompt("Paste your GitHub token once (kept only in this browser):")||"").trim();try{if(t)localStorage.setItem("nades-token",t)}catch(e){}}return t};
@@ -166,7 +174,7 @@ if(EDIT){
     return r.json();
   }
   const put=(path,content,message,sha)=>api(path,{method:"PUT",body:JSON.stringify({message,content,sha})});
-  const mutate=async(map,fn,msg)=>{const f=await api(`maps/${map}.html`);await put(`maps/${map}.html`,b64(fn(dec(f.content))),msg,f.sha)};
+  const mutate=async(map,fn,msg)=>{const f=await api(`maps/${map}.html`,{cache:"no-store"});await put(`maps/${map}.html`,b64(fn(dec(f.content))),msg,f.sha)};
   const cached=(map,src)=>[...(docs[map]?docs[map].querySelectorAll("article"):[])].find(x=>x.querySelector("img")?.getAttribute("src")==src);
   async function shrink(f){
     const bm=await createImageBitmap(f), k=Math.min(1,MAXW/bm.width), c=document.createElement("canvas");
@@ -232,6 +240,53 @@ if(EDIT){
     mk2("Delete",async()=>{
       if(!confirm('Delete "'+h.textContent+'"?'))return;
       await mutate(map,t=>dropAt(t,src,h.textContent),"Delete lineup"); cached(map,src)?.remove(); render();
+    });
+    const half=(e,el,vert)=>{const r=el.getBoundingClientRect();return vert?e.clientY<r.top+r.height/2:e.clientX<r.left+r.width/2};
+    const saved=()=>say("Order saved. The live site updates in about a minute; it is already shown here.");
+    // Reorder whole lineups (up/down): drag the "Move" handle onto another lineup
+    const hd=document.createElement("span");hd.className="handle";hd.textContent="\u283F Move";hd.title="Drag to reorder this lineup";hd.draggable=true;
+    hd.ondragstart=e=>{drag={k:"art",c,src,title:h.textContent};e.dataTransfer.effectAllowed="move";e.dataTransfer.setData("text/plain","lineup");e.dataTransfer.setDragImage(h,10,10);c.classList.add("dragging")};
+    hd.ondragend=()=>{drag=null;c.classList.remove("dragging");clearMarks()};
+    row.prepend(hd);
+    c.addEventListener("dragover",e=>{
+      if(!drag||drag.k!="art"||drag.c===c)return;
+      e.preventDefault();clearMarks();c.classList.add(half(e,c,true)?"drop-before":"drop-after");
+    });
+    c.addEventListener("drop",async e=>{
+      if(!drag||drag.k!="art"||drag.c===c)return;
+      e.preventDefault();e.stopPropagation();
+      const d=drag,before=half(e,c,true);drag=null;clearMarks();
+      try{
+        say("Saving new order...");
+        await mutate(map,t=>moveArt(t,d.src,d.title,src,h.textContent,before),"Reorder lineups");
+        const A=cached(map,d.src),B=cached(map,src); if(A&&B)before?B.before(A):B.after(A);
+        keepY=scrollY;render();saved();
+      }catch(err){say("Failed: "+err.message)}
+    });
+    // Reorder images inside a lineup (left/right): drag an image onto another image of the same lineup
+    const imgs=[...c.querySelectorAll("img")];
+    imgs.forEach((im,i)=>{
+      im.draggable=true;
+      im.addEventListener("dragstart",e=>{drag={k:"img",c,i};e.dataTransfer.effectAllowed="move";e.dataTransfer.setData("text/plain","image");im.classList.add("dragging")});
+      im.addEventListener("dragend",()=>{drag=null;im.classList.remove("dragging");clearMarks()});
+      im.addEventListener("dragover",e=>{
+        if(!drag||drag.k!="img"||drag.c!==c||drag.i==i)return;
+        e.preventDefault();clearMarks();im.classList.add(half(e,im,false)?"drop-before":"drop-after");
+      });
+      im.addEventListener("drop",async e=>{
+        if(!drag||drag.k!="img"||drag.c!==c||drag.i==i)return;
+        e.preventDefault();e.stopPropagation();
+        const from=drag.i,before=half(e,im,false);drag=null;clearMarks();
+        let to=i>from?i-1:i; if(!before)to++;
+        if(to==from)return;
+        try{
+          say("Saving new order...");
+          await mutate(map,t=>moveImg(t,src,h.textContent,from,to,imgs.length),"Reorder images");
+          const a=cached(map,src);
+          if(a){const L=[...a.querySelectorAll("img")];before?L[i].before(L[from]):L[i].after(L[from])}
+          keepY=scrollY;render();saved();
+        }catch(err){say("Failed: "+err.message)}
+      });
     });
     h.after(row);
   };
