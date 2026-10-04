@@ -31,12 +31,23 @@ h3{font-size:17px;font-weight:600;margin:0 0 8px}
 .msg{color:var(--dim)}
 #lb{position:fixed;inset:0;z-index:9;background:rgba(0,0,0,.92);display:grid;place-items:center;cursor:zoom-out}
 #lb img{max-width:98vw;max-height:98vh}
+#draft{margin:10px 12px;padding:10px 12px;border:2px dashed #3b4656;border-radius:8px;background:#181d24}
+#draft p{margin:0 0 8px;color:var(--dim)}
+#dt{width:100%;margin-bottom:10px;padding:9px 11px;font:600 17px "Segoe UI",system-ui,sans-serif;color:var(--txt);background:#0e1115;border:1px solid var(--line);border-radius:5px}
 </style></head>
 <body>
 <header>
   <div class="row" id="maps"></div>
   <div class="row"><span class="row" id="side"></span><span class="sep"></span><span class="row" id="loc"></span></div>
 </header>
+<section id="draft" hidden>
+  <p id="dh"></p>
+  <div id="df" hidden>
+    <input id="dt" placeholder="Lineup title (one line)">
+    <div class="shots" id="dth"></div>
+    <div class="row" style="margin-top:10px"><button id="ds">Save lineup</button><button id="dc">Cancel</button><button id="dk">Reset token</button></div>
+  </div>
+</section>
 <main id="out"></main>
 <div id="lb" hidden><img alt=""></div>
 <script>
@@ -58,7 +69,7 @@ function parse(){
   if(ids(MAPS).includes(m))st.map=m; if(ids(SIDES).includes(s))st.side=s; if(ids(LOCS).includes(l))st.loc=l;
 }
 async function load(m){
-  const r=await fetch(`maps/${m}.html`); if(!r.ok)throw 0;
+  const r=await fetch(`maps/${m}.html`,{cache:"no-cache"}); if(!r.ok)throw 0;
   return new DOMParser().parseFromString(await r.text(),"text/html");
 }
 function note(t){const p=document.createElement("p");p.className="msg";p.textContent=t;return p}
@@ -83,6 +94,7 @@ async function render(){
   arts.forEach(a=>{
     const c=a.cloneNode(true);
     c.querySelectorAll("img").forEach(i=>i.loading="lazy");
+    if(window.addDel)addDel(c);
     out.append(c);
     const b=document.createElement("button");b.textContent=c.querySelector("h3").textContent;
     b.onclick=()=>c.scrollIntoView({behavior:"smooth"});nav.append(b);
@@ -114,6 +126,91 @@ addEventListener("keydown",e=>{
   else if(k=="i")go({loc:"instant"}); else if(k=="a")go({loc:"a"});
   else if(k=="b")go({loc:"b"}); else if(k=="m")go({loc:"mid"});
 });
+
+// ---- Edit mode: open the site with ?edit to drag-drop images and save lineups straight to the repo ----
+const EDIT=new URLSearchParams(location.search).has("edit"), MAXW=1600;
+if(EDIT){
+  const R=`${location.hostname.split(".")[0]}/${location.pathname.split("/")[1]}`;
+  const label=s=>[MAPS,SIDES,LOCS].map((a,i)=>a.find(x=>x[0]==s[["map","side","loc"][i]])[1]).join(" / ");
+  let pending=[], dest=null;
+  $("#draft").hidden=false;
+  const say=m=>$("#dh").textContent=m;
+  const idle=()=>say(`Edit mode: drop images anywhere on this page to add a lineup to ${label(st)}`);
+  idle(); addEventListener("hashchange",()=>{if(!pending.length)idle()});
+  const tok=()=>{let t=localStorage.getItem("nades-token");
+    if(!t){t=(prompt("Paste your GitHub token (kept only in this browser):")||"").trim();if(t)localStorage.setItem("nades-token",t)}return t};
+  async function api(path,opt={}){
+    const r=await fetch(`https://api.github.com/repos/${R}/contents/${path}`,{...opt,headers:{Authorization:"Bearer "+tok(),Accept:"application/vnd.github+json","Content-Type":"application/json"}});
+    if(!r.ok){if(r.status==401)localStorage.removeItem("nades-token");throw new Error(r.status+" "+(await r.text()).slice(0,150))}
+    return r.json();
+  }
+  const put=(path,content,message,sha)=>api(path,{method:"PUT",body:JSON.stringify({message,content,sha})});
+  const dec=b=>new TextDecoder().decode(Uint8Array.from(atob(b.replace(/\n/g,"")),c=>c.charCodeAt(0)));
+  const b64=u=>{let s="";for(const x of u)s+=String.fromCharCode(x);return btoa(s)};
+  const esc=s=>s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  async function shrink(f){
+    const bm=await createImageBitmap(f), k=Math.min(1,MAXW/bm.width), c=document.createElement("canvas");
+    c.width=Math.round(bm.width*k);c.height=Math.round(bm.height*k);
+    c.getContext("2d").drawImage(bm,0,0,c.width,c.height);
+    const b=await new Promise(r=>c.toBlob(r,"image/jpeg",.82));
+    return b64(new Uint8Array(await b.arrayBuffer()));
+  }
+  function paint(){
+    $("#df").hidden=!pending.length; $("#dth").replaceChildren();
+    pending.forEach((f,i)=>{const im=document.createElement("img");im.src=URL.createObjectURL(f);
+      im.title="Click to remove";im.onclick=()=>{pending.splice(i,1);paint()};$("#dth").append(im)});
+    pending.length?say(`Adding ${pending.length} image(s) to ${label(dest)}`):idle();
+  }
+  addEventListener("dragover",e=>e.preventDefault());
+  addEventListener("drop",e=>{
+    e.preventDefault();
+    const fs=[...e.dataTransfer.files].filter(f=>f.type.startsWith("image/")); if(!fs.length)return;
+    if(!pending.length)dest={...st};
+    pending=pending.concat(fs).sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true}));
+    paint();$("#dt").focus();
+  });
+  $("#dc").onclick=()=>{pending=[];$("#dt").value="";paint()};
+  $("#dk").onclick=()=>{localStorage.removeItem("nades-token");tok()};
+  $("#ds").onclick=async()=>{
+    const title=$("#dt").value.trim().replace(/\s+/g," ");
+    if(!title)return say("Type a title first.");
+    const {map,side,loc}=dest, id=Date.now().toString(36),
+      slug=title.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,40)||"lineup";
+    try{
+      const names=[];
+      for(let i=0;i<pending.length;i++){
+        say(`Uploading image ${i+1} of ${pending.length}...`);
+        const n=`${side}-${loc}-${slug}-${id}-${i+1}.jpg`;
+        await put(`img/${map}/${n}`,await shrink(pending[i]),"Add image "+n); names.push(n);
+      }
+      say("Updating the map file...");
+      const f=await api(`maps/${map}.html`), txt=dec(f.content);
+      const open=txt.indexOf(`<section data-side="${side}" data-loc="${loc}">`);
+      const end=open<0?-1:txt.indexOf("</section>",open);
+      if(end<0)throw new Error("Section not found in maps/"+map+".html");
+      const art=`<article>\n  <h3>${esc(title)}</h3>\n  <div class="shots">\n${names.map(n=>`    <img src="img/${map}/${n}">`).join("\n")}\n  </div>\n</article>\n`;
+      await put(`maps/${map}.html`,b64(new TextEncoder().encode(txt.slice(0,end)+art+txt.slice(end))),"Add lineup: "+title,f.sha);
+      pending=[];$("#dt").value="";paint();
+      say(`Saved to ${label(dest)}. It goes live in about a minute, then reload.`);
+    }catch(err){say("Failed: "+err.message)}
+  };
+  window.addDel=c=>{
+    const b=document.createElement("button");b.textContent="Delete this lineup";b.style.cssText="margin:0 0 8px;font-size:12px";
+    b.onclick=async()=>{
+      const src=c.querySelector("img")?.getAttribute("src");
+      if(!src||!confirm('Delete "'+c.querySelector("h3").textContent+'"?'))return;
+      try{
+        const f=await api(`maps/${st.map}.html`), txt=dec(f.content), k=txt.indexOf(`src="${src}"`);
+        const a=txt.lastIndexOf("<article",k), z=txt.indexOf("</article>",k);
+        if(k<0||a<0||z<0)throw new Error("Lineup not found in file");
+        await put(`maps/${st.map}.html`,b64(new TextEncoder().encode(txt.slice(0,a)+txt.slice(z+10).replace(/^\n/,""))),"Delete lineup",f.sha);
+        [...docs[st.map].querySelectorAll("article")].find(x=>x.querySelector("img")?.getAttribute("src")==src)?.remove();
+        render();
+      }catch(err){say("Failed: "+err.message)}
+    };
+    c.querySelector("h3").after(b);
+  };
+}
 
 addEventListener("hashchange",render);
 if(!location.hash){try{const l=localStorage.getItem("nades-last");if(l)history.replaceState(null,"",l)}catch(e){}}
