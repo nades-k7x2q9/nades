@@ -39,6 +39,9 @@ h3{font-size:17px;font-weight:600;margin:0 0 8px}
 #draft{margin:10px 12px;padding:10px 12px;border:2px dashed #3b4656;border-radius:8px;background:#181d24}
 #draft p{margin:0 0 8px;color:var(--dim)}
 #dt{width:100%;margin-bottom:10px;padding:9px 11px;font:600 17px "Segoe UI",system-ui,sans-serif;color:var(--txt);background:#0e1115;border:1px solid var(--line);border-radius:5px}
+.tags{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:0 0 8px}
+.tags .lbl{color:var(--dim);font-size:13px;min-width:52px}
+.tags button{padding:4px 11px;font-size:13px}
 </style></head>
 <body>
 <header>
@@ -79,8 +82,23 @@ async function load(m){
 }
 function note(t){const p=document.createElement("p");p.className="msg";p.textContent=t;return p}
 
+// TAGS-START
+const PIN=/^\s*(?:CT|T)\s+Spawns\s*$/i;   // the "T Spawns" / "CT Spawns" overview images: always shown first, never filtered
+const tagsOf=title=>{
+  const t=title.replace(/\s+/g," ").trim();
+  if(PIN.test(t))return {pin:true,spawn:null,area:""};
+  const m=/\bSpawn\s+(\d+)\b/i.exec(t);
+  const left=t.split(/\s+[-\u2013\u2014]\s+/)[0];
+  return {pin:false,spawn:m?+m[1]:null,area:left.replace(/\s*\bSpawn\s+\d+\b.*$/i,"").trim()};
+};
+const chipText=t=>t.split(/\s+[-\u2013\u2014]\s+/)[0].trim()||t;   // chips show only what is before the dash
+const visible=(i,f)=>i.pin||((f.spawn===null||i.spawn===f.spawn)&&(f.area===null||i.area.toLowerCase()===f.area));
+// TAGS-END
+let flt={spawn:null,area:null}, fkey="";   // current tag filter; reset whenever map/side/location changes
+
 async function render(){
   parse(); const t=++tok;
+  const key=`${st.map}/${st.side}/${st.loc}`; if(key!==fkey){flt={spawn:null,area:null};fkey=key}
   try{localStorage.setItem("nades-last",location.hash)}catch(e){}
   [["#maps","map"],["#side","side"],["#loc","loc"]].forEach(([id,k])=>
     document.querySelectorAll(id+" button").forEach(b=>b.classList.toggle("on",b.dataset.v==st[k])));
@@ -92,16 +110,43 @@ async function render(){
   const sec=doc.querySelector(`section[data-side="${st.side}"][data-loc="${st.loc}"]`);
   const arts=sec?[...sec.querySelectorAll("article")]:[];
   if(!arts.length){out.append(note("No lineups here yet."));return}
+  const items=arts.map(a=>({a,info:tagsOf(a.querySelector("h3")?.textContent||"")}));
+  items.sort((x,y)=>(y.info.pin?1:0)-(x.info.pin?1:0));
+  const spawns=[...new Set(items.map(x=>x.info.spawn).filter(n=>n!==null))].sort((p,q)=>p-q);
+  const areas=new Map(); items.forEach(({info})=>{const k=info.area.toLowerCase();if(!info.pin&&!areas.has(k))areas.set(k,info.area)});
+  if(areas.has("")&&areas.size<2)areas.delete("");
+  if(st.loc!=="instant"||!spawns.includes(flt.spawn))flt.spawn=null;
+  if(flt.area!==null&&!areas.has(flt.area))flt.area=null;
+  const rows=document.createElement("div"); out.append(rows);
+  const mkRow=(label,k,opts)=>{
+    const r=document.createElement("div");r.className="tags";
+    const l=document.createElement("span");l.className="lbl";l.textContent=label;r.append(l);
+    if(!opts.length){const n=document.createElement("span");n.className="msg";n.textContent="none in titles";r.append(n)}
+    opts.forEach(([v,txt])=>{const b=document.createElement("button");b.textContent=txt;b.dataset.k=k;b.dataset.v=String(v);
+      b.onclick=()=>{if(k=="s")flt.spawn=flt.spawn===v?null:v;else flt.area=flt.area===v?null:v;apply()};r.append(b)});
+    rows.append(r);
+  };
+  if(st.loc==="instant")mkRow("Spawn","s",spawns.map(n=>[n,String(n)]));
+  mkRow("Area","a",[...areas].map(([k,txt])=>[k,k===""?"No area":txt]));
   const nav=document.createElement("nav");nav.className="row";out.append(nav);
-  arts.forEach(a=>{
+  const empty=note("No lineups match this filter.");empty.hidden=true;out.append(empty);
+  const views=[];
+  items.forEach(({a,info})=>{
     const c=a.cloneNode(true);
     c.querySelectorAll("img").forEach(i=>i.loading="lazy");
     if(window.addDel)addDel(c);
     c.querySelectorAll("img").forEach(i=>{const p=i.getAttribute("src");i.dataset.orig=p;const u=local[p];if(u)i.src=u});
     out.append(c);
-    const b=document.createElement("button");b.textContent=c.querySelector("h3").textContent;
+    const b=document.createElement("button");b.textContent=chipText(c.querySelector("h3").textContent);b.title=c.querySelector("h3").textContent;
     b.onclick=()=>c.scrollIntoView({behavior:"smooth"});nav.append(b);
+    views.push({c,b,info});
   });
+  function apply(){
+    views.forEach(({c,b,info})=>{const v=visible(info,flt);c.hidden=!v;b.hidden=!v});
+    rows.querySelectorAll("button").forEach(x=>x.classList.toggle("on",x.dataset.k=="s"?flt.spawn===+x.dataset.v:flt.area===x.dataset.v));
+    empty.hidden=!(flt.spawn!==null||flt.area!==null)||views.some(v=>!v.info.pin&&!v.c.hidden);
+  }
+  apply();
   if(keepY==null)scrollTo(0,0);else{scrollTo(0,keepY);keepY=null}
 }
 
