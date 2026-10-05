@@ -97,7 +97,7 @@ async function render(){
     const c=a.cloneNode(true);
     c.querySelectorAll("img").forEach(i=>i.loading="lazy");
     if(window.addDel)addDel(c);
-    c.querySelectorAll("img").forEach(i=>{const u=local[i.getAttribute("src")];if(u)i.src=u});
+    c.querySelectorAll("img").forEach(i=>{const p=i.getAttribute("src");i.dataset.orig=p;const u=local[p];if(u)i.src=u});
     out.append(c);
     const b=document.createElement("button");b.textContent=c.querySelector("h3").textContent;
     b.onclick=()=>c.scrollIntoView({behavior:"smooth"});nav.append(b);
@@ -151,7 +151,7 @@ const moveImg=(t,src,title,from,to,n)=>{   // reorder the <img> tags inside one 
   return t.slice(0,a)+blk.replace(/<img\b[^>]*>/gi,()=>arr[k++])+t.slice(z)};
 const retitle=(t,src,title,old)=>{const [a,z]=locate(t,src,old),blk=t.slice(a,z),
   nb=blk.replace(/(<h3[^>]*>)[\s\S]*?(<\/h3>)/i,(m,o,c)=>o+esc(title)+c);
-  if(nb==blk)throw new Error("Title not found");return t.slice(0,a)+nb+t.slice(z)};
+  if(!/<h3[^>]*>/i.test(blk))throw new Error("Title not found");return t.slice(0,a)+nb+t.slice(z)};
 const norm=s=>{s=s.replace(/&amp;/g,"&");try{s=decodeURIComponent(s)}catch(e){}return s.replace(/^\.?\//,"")};
 const srcsOf=h=>[...h.matchAll(/<img\b[^>]*?\bsrc\s*=\s*["']?([^"'\s>]+)/gi)].map(m=>norm(m[1]));
 const ownImgs=(t,src,title)=>{   // image files used only by this lineup (safe to delete along with it)
@@ -205,7 +205,7 @@ if(EDIT){
       catch(e){if(e.status!=422||n>=2)throw e}
     }
   }
-  const mutate=(map,fn,msg)=>commit(msg,async ctx=>({write:{[`maps/${map}.html`]:{text:fn(await ctx.read(`maps/${map}.html`))}}}));
+  const mutate=(map,fn,msg)=>commit(msg,async ctx=>{const p=`maps/${map}.html`,o=await ctx.read(p),n=fn(o);return n==o?{}:{write:{[p]:{text:n}}}});
   // GH-END
   const cached=(map,src)=>[...(docs[map]?docs[map].querySelectorAll("article"):[])].find(x=>x.querySelector("img")?.getAttribute("src")==src);
   async function shrink(f){
@@ -285,14 +285,15 @@ if(EDIT){
     }catch(err){say("Failed: "+err.message)}
   };
   window.addDel=c=>{
-    const src=c.querySelector("img")?.getAttribute("src"), h=c.querySelector("h3"), map=st.map, row=document.createElement("div");
+    const src=c.querySelector("img")?.dataset.orig||c.querySelector("img")?.getAttribute("src"), h=c.querySelector("h3"), map=st.map, row=document.createElement("div");
     row.className="row";row.style.marginBottom="8px";
     const mk2=(t,fn)=>{const b=document.createElement("button");b.textContent=t;b.style.fontSize="12px";
       b.onclick=async()=>{try{await fn()}catch(err){say("Failed: "+err.message)}};row.append(b)};
     mk2("Rename",async()=>{
       const nt=(prompt("New title:",h.textContent)||"").trim().replace(/\s+/g," "); if(!nt||nt==h.textContent)return;
-      await mutate(map,t=>retitle(t,src,nt,h.textContent),"Rename lineup");
+      say("Renaming..."); await mutate(map,t=>retitle(t,src,nt,h.textContent),"Rename lineup");
       const a=cached(map,src); if(a)a.querySelector("h3").textContent=nt; render();
+      say("Renamed and saved. The live site updates in about a minute; it is already shown here.");
     });
     mk2("Delete",async()=>{
       const title=h.textContent;
