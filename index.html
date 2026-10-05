@@ -26,6 +26,7 @@ nav button{padding:4px 10px;font-size:13px}
 article{margin:0 0 24px;scroll-margin-top:100px}
 h3{font-size:17px;font-weight:600;margin:0 0 8px}
 .shots{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.shots.one{grid-template-columns:1fr}
 .shots img{display:block;width:100%;aspect-ratio:auto 16/9;border-radius:5px;background:#000;cursor:zoom-in}
 .handle{padding:4px 10px;font-size:12px;border:1px solid var(--line);border-radius:5px;background:#262d38;cursor:grab;user-select:none}
 .dragging{opacity:.4}
@@ -42,6 +43,14 @@ h3{font-size:17px;font-weight:600;margin:0 0 8px}
 .tags{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:0 0 8px}
 .tags .lbl{color:var(--dim);font-size:13px;min-width:52px}
 .tags button{padding:4px 11px;font-size:13px}
+#out{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:14px;align-items:start}
+#out>div,#out>nav,#out>p,#out>h2{grid-column:1/-1}
+@media (max-width:640px){#out{grid-template-columns:1fr}}
+#hv{position:fixed;inset:0;z-index:8;display:grid;place-items:center;pointer-events:none;background:rgba(0,0,0,.6);opacity:0;visibility:hidden;transition:opacity 90ms ease-in,visibility 0s linear 90ms}
+#hv.on{opacity:1;visibility:visible;transition:opacity 140ms ease-out,visibility 0s}
+#hv img{max-width:96vw;max-height:94vh;border-radius:6px;box-shadow:0 12px 40px rgba(0,0,0,.6);transform:scale(.985);transition:transform 140ms ease-out}
+#hv.on img{transform:scale(1)}
+@media (prefers-reduced-motion:reduce){#hv,#hv.on,#hv img{transition:none}}
 </style></head>
 <body>
 <header>
@@ -58,6 +67,7 @@ h3{font-size:17px;font-weight:600;margin:0 0 8px}
 </section>
 <main id="out"></main>
 <div id="lb" hidden><img alt=""></div>
+<div id="hv" aria-hidden="true"><img alt=""></div>
 <script>
 // Edit this list to change the map pool (folder/file names must match: maps/<id>.html, img/<id>/)
 const MAPS=[["mirage","Mirage"],["inferno","Inferno"],["nuke","Nuke"],["ancient","Ancient"],["dust2","Dust II"],["anubis","Anubis"],["cache","Cache"],["vertigo","Vertigo"]];
@@ -97,7 +107,7 @@ const visible=(i,f)=>(f.spawn===null&&f.area===null)||(!i.ov&&(f.spawn===null||i
 let flt={spawn:null,area:null}, fkey="";   // current tag filter; reset whenever map/side/location changes
 
 async function render(){
-  parse(); const t=++tok;
+  parse(); const t=++tok; hvOff();
   const key=`${st.map}/${st.side}/${st.loc}`; if(key!==fkey){flt={spawn:null,area:null};fkey=key}
   try{localStorage.setItem("nades-last",location.hash)}catch(e){}
   [["#maps","map"],["#side","side"],["#loc","loc"]].forEach(([id,k])=>
@@ -133,6 +143,7 @@ async function render(){
   items.forEach(({a,info})=>{
     const c=a.cloneNode(true);
     c.querySelectorAll("img").forEach(i=>i.loading="lazy");
+    c.querySelectorAll(".shots").forEach(g=>g.classList.toggle("one",g.querySelectorAll("img").length==1));
     if(window.addDel)addDel(c);
     c.querySelectorAll("img").forEach(i=>{const p=i.getAttribute("src");i.dataset.orig=p;const u=local[p];if(u)i.src=u});
     out.append(c);
@@ -400,6 +411,24 @@ if(EDIT){
     h.after(row);
   };
 }
+
+// ---- Hover preview: rest the cursor on a lineup image to see it large; move off to dismiss. Off in edit mode. ----
+const HV_DELAY=250, HV_SWITCH=80, HV_GRACE=40, HV_QUIET=200;   // ms: first show / switching between images / flicker guard / quiet time after scrolling
+const hv=$("#hv"), hvImg=hv.querySelector("img");
+let hvT=null, hvOn=false, hvCur=null, hvQuiet=0;
+function hvOff(){clearTimeout(hvT);hvT=null;hvCur=null;if(hvOn){hvOn=false;hv.classList.remove("on")}}
+const hvBlocked=()=>!lb.hidden||(typeof EDIT!=="undefined"&&EDIT)||Date.now()<hvQuiet||(window.matchMedia&&!matchMedia("(hover: hover)").matches);
+const hvTarget=e=>e.target.closest?e.target.closest("#out .shots img"):null;
+document.addEventListener("mouseover",e=>{
+  const i=hvTarget(e); if(!i||i===hvCur)return;
+  hvCur=i; clearTimeout(hvT);
+  hvT=setTimeout(()=>{if(hvCur!==i||hvBlocked())return;hvImg.src=i.currentSrc||i.src;hvOn=true;hv.classList.add("on")},hvOn?HV_SWITCH:HV_DELAY);
+});
+document.addEventListener("mouseout",e=>{if(!hvTarget(e))return;hvCur=null;clearTimeout(hvT);hvT=setTimeout(hvOff,HV_GRACE)});
+document.addEventListener("mousedown",hvOff,true);
+addEventListener("scroll",()=>{hvQuiet=Date.now()+HV_QUIET;hvOff()},{passive:true});
+addEventListener("blur",hvOff);
+addEventListener("keydown",e=>{if(e.key=="Escape")hvOff()});
 
 addEventListener("hashchange",render);
 if(!location.hash){try{const l=localStorage.getItem("nades-last");if(l)history.replaceState(null,"",l)}catch(e){}}
