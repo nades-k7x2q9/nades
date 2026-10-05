@@ -83,16 +83,16 @@ async function load(m){
 function note(t){const p=document.createElement("p");p.className="msg";p.textContent=t;return p}
 
 // TAGS-START
-const PIN=/^\s*(?:CT|T)\s+Spawns\s*$/i;   // the "T Spawns" / "CT Spawns" overview images: always shown first, never filtered
+const OVERVIEW=/\bSpawns\s*$/i;   // overview images ("T Spawns", "CT Spawns", "Mirage T Spawns"): no tags, and hidden whenever a tag is selected
 const tagsOf=title=>{
   const t=title.replace(/\s+/g," ").trim();
-  if(PIN.test(t))return {pin:true,spawn:null,area:""};
-  const m=/\bSpawn\s+(\d+)\b/i.exec(t);
   const left=t.split(/\s+[-\u2013\u2014]\s+/)[0];
-  return {pin:false,spawn:m?+m[1]:null,area:left.replace(/\s*\bSpawn\s+\d+\b.*$/i,"").trim()};
+  if(OVERVIEW.test(left))return {ov:true,spawn:null,area:""};
+  const m=/\bSpawn\s+(\d+)\b/i.exec(t);
+  return {ov:false,spawn:m?+m[1]:null,area:left.replace(/\s*\bSpawn\s+\d+\b.*$/i,"").trim()};
 };
 const chipText=t=>t.split(/\s+[-\u2013\u2014]\s+/)[0].trim()||t;   // chips show only what is before the dash
-const visible=(i,f)=>i.pin||((f.spawn===null||i.spawn===f.spawn)&&(f.area===null||i.area.toLowerCase()===f.area));
+const visible=(i,f)=>(f.spawn===null&&f.area===null)||(!i.ov&&(f.spawn===null||i.spawn===f.spawn)&&(f.area===null||i.area.toLowerCase()===f.area));
 // TAGS-END
 let flt={spawn:null,area:null}, fkey="";   // current tag filter; reset whenever map/side/location changes
 
@@ -111,9 +111,8 @@ async function render(){
   const arts=sec?[...sec.querySelectorAll("article")]:[];
   if(!arts.length){out.append(note("No lineups here yet."));return}
   const items=arts.map(a=>({a,info:tagsOf(a.querySelector("h3")?.textContent||"")}));
-  items.sort((x,y)=>(y.info.pin?1:0)-(x.info.pin?1:0));
   const spawns=[...new Set(items.map(x=>x.info.spawn).filter(n=>n!==null))].sort((p,q)=>p-q);
-  const areas=new Map(); items.forEach(({info})=>{const k=info.area.toLowerCase();if(!info.pin&&!areas.has(k))areas.set(k,info.area)});
+  const areas=new Map(); items.forEach(({info})=>{const k=info.area.toLowerCase();if(!info.ov&&!areas.has(k))areas.set(k,info.area)});
   if(areas.has("")&&areas.size<2)areas.delete("");
   if(st.loc!=="instant"||!spawns.includes(flt.spawn))flt.spawn=null;
   if(flt.area!==null&&!areas.has(flt.area))flt.area=null;
@@ -144,7 +143,7 @@ async function render(){
   function apply(){
     views.forEach(({c,b,info})=>{const v=visible(info,flt);c.hidden=!v;b.hidden=!v});
     rows.querySelectorAll("button").forEach(x=>x.classList.toggle("on",x.dataset.k=="s"?flt.spawn===+x.dataset.v:flt.area===x.dataset.v));
-    empty.hidden=!(flt.spawn!==null||flt.area!==null)||views.some(v=>!v.info.pin&&!v.c.hidden);
+    empty.hidden=!(flt.spawn!==null||flt.area!==null)||views.some(v=>!v.c.hidden);
   }
   apply();
   if(keepY==null)scrollTo(0,0);else{scrollTo(0,keepY);keepY=null}
