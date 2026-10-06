@@ -1077,6 +1077,7 @@ ${names.map(n=>`    <img src="img/${map}/${n}">`).join("\n")}
         t=>retitle(t,src,nt,h.textContent),
         "Rename lineup"
       );
+      delete docs[st.map];
       render();
       say("Renamed and saved.");
     });
@@ -1094,6 +1095,7 @@ ${names.map(n=>`    <img src="img/${map}/${n}">`).join("\n")}
         return {write:{[p]:{text:dropAt(t,src,title)}},del};
       });
 
+      delete docs[st.map];
       render();
       say("Deleted.");
     });
@@ -1144,6 +1146,7 @@ ${names.map(n=>`    <img src="img/${map}/${n}">`).join("\n")}
           t=>moveArt(t,d.src,d.title,src,h.textContent,before),
           "Reorder lineups"
         );
+        delete docs[st.map];
         keepY=scrollY;render();say("Order saved.");
       }catch(err){say("Failed: "+err.message)}
     });
@@ -1186,6 +1189,7 @@ ${names.map(n=>`    <img src="img/${map}/${n}">`).join("\n")}
             t=>moveImg(t,src,h.textContent,from,to,imgs.length),
             "Reorder images"
           );
+          delete docs[st.map];
           keepY=scrollY;render();say("Order saved.");
         }catch(err){say("Failed: "+err.message)}
       });
