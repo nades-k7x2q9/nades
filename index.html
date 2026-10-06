@@ -17,6 +17,7 @@ html,body{
   font:15px/1.4 "Segoe UI",system-ui,sans-serif;scroll-behavior:smooth;
 }
 html{scroll-snap-type:y mandatory}
+html.edit-mode{scroll-snap-type:none;scroll-behavior:auto}
 body{overflow-x:hidden}
 [hidden]{display:none!important}
 button{
@@ -485,6 +486,7 @@ async function render(){
         if(local[p])oi.src=local[p];
         oi.alt=ot.textContent;
         overviewBox.append(ot,oi);
+        if(window.addOverviewEdit)addOverviewEdit(overviewBox,overview.a);
       }else{
         overviewBox.append(ot,note("No overview image found."));
       }
@@ -578,6 +580,7 @@ const EDIT=!P.has("view")&&P.has("edit");
 const MAXW=1600;
 
 if(EDIT){
+  document.documentElement.classList.add("edit-mode");
   document.body.classList.add("edit-mode");
   const R=location.hostname.split(".")[0]+"/"+location.pathname.split("/")[1];
   const label=s=>[MAPS,SIDES,LOCS]
@@ -942,6 +945,61 @@ ${names.map(n=>`    <img src="img/${map}/${n}">`).join("\n")}
     }catch(err){
       say("Failed: "+err.message);
     }
+  };
+
+  window.addOverviewEdit=(box,source)=>{
+    const h=source.querySelector("h3");
+    const first=source.querySelector("img");
+    const src=first?.getAttribute("src");
+    if(!src||!h)return;
+
+    const title=h.textContent;
+    const row=document.createElement("div");
+    row.className="row";
+    row.style.marginBottom="8px";
+
+    const mk2=(text,fn)=>{
+      const b=document.createElement("button");
+      b.textContent=text;b.style.fontSize="12px";
+      b.onclick=async()=>{
+        try{await fn()}catch(err){say("Failed: "+err.message)}
+      };
+      row.append(b);
+    };
+
+    mk2("Rename",async()=>{
+      const nt=normalizeTitle(prompt("New title:",title)||"");
+      if(!nt||nt===title)return;
+
+      say("Renaming...");
+      await mutate(
+        st.map,
+        t=>retitle(t,src,nt,title),
+        "Rename lineup"
+      );
+      delete docs[st.map];
+      await render();
+      say("Renamed and saved.");
+    });
+
+    mk2("Delete",async()=>{
+      if(!confirm('Delete "'+title+
+          '" and its image files from the repository?'))return;
+
+      say("Deleting...");
+      await commit("Delete lineup: "+title,async ctx=>{
+        const p="maps/"+st.map+".html";
+        const t=await ctx.read(p);
+        const del=ownImgs(t,src,title);
+        return {write:{[p]:{text:dropAt(t,src,title)}},del};
+      });
+
+      delete docs[st.map];
+      await render();
+      say("Deleted.");
+    });
+
+    box.insertBefore(row,box.querySelector("img"));
   };
 
   window.addDel=c=>{
