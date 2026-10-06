@@ -1,437 +1,1071 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8">
+<html lang="en">
+<head>
+<meta charset="utf-8">
 <meta name="robots" content="noindex,nofollow">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>CS2 Nades</title>
 <style>
-:root{--bg:#14171c;--panel:#1c2128;--line:#2e3641;--txt:#e9edf2;--dim:#98a3b3;--ct:#5aa9ff;--t:#f2b53a}
+:root{
+  --bg:#0f1318;--panel:#171c23;--panel2:#1d242d;--line:#2b3541;
+  --txt:#eef2f7;--dim:#8f9aaa;--ct:#62adff;--t:#efb64b;--neutral:#7f8da2;
+  --max:1600px;
+}
 *{box-sizing:border-box}
-html,body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.4 "Segoe UI",system-ui,sans-serif}
+html,body{
+  margin:0;min-height:100%;background:var(--bg);color:var(--txt);
+  font:15px/1.4 "Segoe UI",system-ui,sans-serif;scroll-behavior:smooth;
+}
+html{scroll-snap-type:y mandatory}
+body{overflow-x:hidden}
 [hidden]{display:none!important}
-header{position:sticky;top:0;z-index:5;background:var(--panel);border-bottom:1px solid var(--line);padding:8px;display:grid;gap:6px}
-.row{display:flex;gap:6px;flex-wrap:wrap}
-.sep{width:14px}
-button{font:inherit;color:var(--txt);background:#262d38;border:1px solid var(--line);border-radius:5px;padding:7px 13px;cursor:pointer}
-button:hover{background:#323b49}
-button.on{background:var(--acc,#3d7de8);border-color:transparent;color:#fff;font-weight:600}
+button{
+  font:inherit;color:var(--txt);background:#252d38;border:1px solid var(--line);
+  border-radius:5px;padding:7px 12px;cursor:pointer;
+  transition:background 90ms ease,border-color 90ms ease,transform 90ms ease;
+}
+button:hover{background:#303a47}
+button:active{transform:translateY(1px)}
+button.on{background:var(--acc,#4b82d8);border-color:transparent;color:#fff;font-weight:650}
+header{
+  position:sticky;top:0;z-index:5;background:rgba(23,28,35,.98);
+  border-bottom:1px solid var(--line);padding:8px;display:grid;gap:6px;
+  transition:padding 140ms ease,box-shadow 140ms ease;
+  box-shadow:0 2px 12px rgba(0,0,0,.12);
+}
+body.compact-header header{padding:4px 7px;box-shadow:0 4px 16px rgba(0,0,0,.2)}
+.row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.sep{width:10px}
 #maps button{flex:1 1 0;min-width:72px}
 #side button{min-width:56px}
-#side [data-v=ct]{--acc:var(--ct);color:var(--txt)}
+#side [data-v=ct]{--acc:var(--ct)}
 #side [data-v=t]{--acc:var(--t)}
-#side [data-v=t].on,#side [data-v=ct].on{color:#101318}
+#side [data-v=t].on,#side [data-v=ct].on{color:#11161b}
 #loc button{min-width:64px}
-main{padding:10px 12px 48px;max-width:1800px;margin:0 auto}
-nav{margin-bottom:14px}
-nav button{padding:4px 10px;font-size:13px}
-article{margin:0 0 24px;scroll-margin-top:100px}
-h3{font-size:17px;font-weight:600;margin:0 0 8px}
-.shots{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
-.shots.one{grid-template-columns:1fr}
-.shots img{display:block;width:100%;aspect-ratio:auto 16/9;border-radius:5px;background:#000;cursor:zoom-in}
-.handle{padding:4px 10px;font-size:12px;border:1px solid var(--line);border-radius:5px;background:#262d38;cursor:grab;user-select:none}
+body.compact-header #maps button,
+body.compact-header #side button,
+body.compact-header #loc button{padding-top:4px;padding-bottom:4px}
+
+main{padding:12px 14px 64px;max-width:calc(var(--max) + 28px);margin:0 auto}
+#filters{margin:0 auto 18px;max-width:var(--max)}
+.filter-summary{
+  display:flex;justify-content:space-between;align-items:baseline;
+  gap:12px;margin:0 0 8px;
+}
+.filter-summary strong{font-size:13px;letter-spacing:.02em}
+.filter-summary span{color:var(--dim);font-size:12px}
+
+.instant-top{
+  display:grid;grid-template-columns:minmax(0,3fr) minmax(280px,2fr);
+  gap:12px;align-items:stretch;margin-bottom:20px;
+}
+.filter-panel,.filters-only,.spawn-overview{
+  min-width:0;border:1px solid var(--line);border-radius:8px;background:var(--panel);
+}
+.filter-panel,.filters-only{padding:12px}
+.spawn-overview{
+  padding:10px 12px 12px;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+}
+.spawn-overview h3{
+  align-self:stretch;margin:0 0 8px;font-size:13px;font-weight:650;
+  color:var(--dim);text-transform:uppercase;letter-spacing:.06em;
+}
+.spawn-overview img{
+  display:block;width:auto;max-width:100%;height:auto;max-height:38vh;
+  border-radius:5px;background:#090c10;cursor:zoom-in;
+}
+
+.tag-group{margin-top:10px}
+.tag-group:first-child{margin-top:0}
+.tag-label{
+  display:flex;align-items:center;gap:7px;margin:0 0 6px;color:var(--dim);
+  font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;
+}
+.tag-label::before{
+  content:"";width:3px;height:12px;border-radius:3px;
+  background:var(--tag-accent,var(--neutral));
+}
+.tag-group[data-kind=spawn][data-side=ct]{--tag-accent:var(--ct)}
+.tag-group[data-kind=spawn][data-side=t]{--tag-accent:var(--t)}
+.tag-options{display:flex;flex-wrap:wrap;gap:5px}
+.tag-options button{
+  padding:5px 9px;min-width:38px;font-size:12px;
+  background:#222a35;border-color:#364252;
+}
+.tag-group[data-kind=spawn][data-side=ct] .tag-options button.on{
+  background:var(--ct);border-color:var(--ct);color:#08111b;
+}
+.tag-group[data-kind=spawn][data-side=t] .tag-options button.on{
+  background:var(--t);border-color:var(--t);color:#171109;
+}
+.tag-group[data-kind=area] .tag-options button.on{
+  background:#7e8da3;border-color:#7e8da3;color:#0e1217;
+}
+.empty-tags,.msg{color:var(--dim);font-size:13px}
+
+.lineup{
+  max-width:var(--max);margin:0 auto 34px;
+  scroll-snap-align:center;scroll-snap-stop:always;scroll-margin-block:16px;
+}
+.lineup h3{
+  margin:0 0 9px;font-size:16px;line-height:1.25;
+  font-weight:650;color:#f0f3f7;
+}
+.lineup .shots{
+  display:flex;flex-direction:column;align-items:center;gap:10px;
+}
+.lineup .shots img{
+  display:block;width:auto;max-width:100%;
+  max-height:calc(100vh - 118px);height:auto;
+  border-radius:5px;background:#080b0f;
+  box-shadow:0 3px 18px rgba(0,0,0,.28);cursor:zoom-in;
+}
+
+.handle{
+  padding:4px 10px;font-size:12px;border:1px solid var(--line);
+  border-radius:5px;background:#222a34;cursor:grab;user-select:none;
+}
 .dragging{opacity:.4}
 .drop-before{box-shadow:0 -4px 0 var(--ct)}
 .drop-after{box-shadow:0 4px 0 var(--ct)}
-.shots img.drop-before{box-shadow:-5px 0 0 var(--ct)}
-.shots img.drop-after{box-shadow:5px 0 0 var(--ct)}
-.msg{color:var(--dim)}
-#lb{position:fixed;inset:0;z-index:9;background:rgba(0,0,0,.92);display:grid;place-items:center;cursor:zoom-out}
-#lb img{max-width:98vw;max-height:98vh}
-#draft{margin:10px 12px;padding:10px 12px;border:2px dashed #3b4656;border-radius:8px;background:#181d24}
+
+#lb{
+  position:fixed;inset:0;z-index:9;background:rgba(0,0,0,.92);
+  display:grid;place-items:center;cursor:zoom-out;
+}
+#lb img{max-width:98vw;max-height:96vh}
+
+#draft{
+  margin:10px 14px 0;padding:10px 12px;border:2px dashed #3b4656;
+  border-radius:8px;background:#181d24;
+}
 #draft p{margin:0 0 8px;color:var(--dim)}
-#dt{width:100%;margin-bottom:10px;padding:9px 11px;font:600 17px "Segoe UI",system-ui,sans-serif;color:var(--txt);background:#0e1115;border:1px solid var(--line);border-radius:5px}
-.tags{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:0 0 8px}
-.tags .lbl{color:var(--dim);font-size:13px;min-width:52px}
-.tags button{padding:4px 11px;font-size:13px}
-#out{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:14px;align-items:start}
-#out>div,#out>nav,#out>p,#out>h2{grid-column:1/-1}
-@media (max-width:640px){#out{grid-template-columns:1fr}}
-#hv{position:fixed;inset:0;z-index:8;display:grid;place-items:center;pointer-events:none;background:rgba(0,0,0,.6);opacity:0;visibility:hidden;transition:opacity 90ms ease-in,visibility 0s linear 90ms}
-#hv.on{opacity:1;visibility:visible;transition:opacity 140ms ease-out,visibility 0s}
-#hv img{max-width:96vw;max-height:94vh;border-radius:6px;box-shadow:0 12px 40px rgba(0,0,0,.6);transform:scale(.985);transition:transform 140ms ease-out}
-#hv.on img{transform:scale(1)}
-@media (prefers-reduced-motion:reduce){#hv,#hv.on,#hv img{transition:none}}
-</style></head>
+#dt{
+  width:100%;margin-bottom:10px;padding:9px 11px;
+  font:600 17px "Segoe UI",system-ui,sans-serif;color:var(--txt);
+  background:#0e1115;border:1px solid var(--line);border-radius:5px;
+}
+#dt::placeholder{color:#657182}
+#dth{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start;margin-bottom:4px}
+#dth img{display:block;width:auto;max-width:220px;max-height:140px;border-radius:5px;cursor:pointer}
+
+@media (max-width:900px){
+  .instant-top{grid-template-columns:1fr}
+  .spawn-overview{align-items:flex-start}
+  .spawn-overview img{align-self:center;max-height:34vh}
+}
+@media (max-width:640px){
+  html{scroll-snap-type:y proximity}
+  main{padding-left:9px;padding-right:9px}
+  .lineup{margin-bottom:26px}
+  .lineup .shots img{max-height:calc(100vh - 104px)}
+  .instant-top{gap:8px}
+}
+@media (prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto}
+  header,button{transition:none}
+}
+</style>
+</head>
 <body>
 <header>
   <div class="row" id="maps"></div>
-  <div class="row"><span class="row" id="side"></span><span class="sep"></span><span class="row" id="loc"></span></div>
+  <div class="row">
+    <span class="row" id="side"></span>
+    <span class="sep"></span>
+    <span class="row" id="loc"></span>
+  </div>
 </header>
+
 <section id="draft" hidden>
   <p id="dh"></p>
   <div id="df" hidden>
-    <input id="dt" placeholder="Lineup title (one line)">
+    <input id="dt" placeholder="Lineup title (use | between location and action)">
     <div class="shots" id="dth"></div>
-    <div class="row" style="margin-top:10px"><button id="ds">Save lineup</button><button id="dc">Cancel</button><button id="dk">Reset token</button></div>
+    <div class="row" style="margin-top:10px">
+      <button id="ds">Save lineup</button>
+      <button id="dc">Cancel</button>
+      <button id="dk">Reset token</button>
+    </div>
   </div>
 </section>
+
 <main id="out"></main>
 <div id="lb" hidden><img alt=""></div>
-<div id="hv" aria-hidden="true"><img alt=""></div>
+
 <script>
-// Edit this list to change the map pool (folder/file names must match: maps/<id>.html, img/<id>/)
-const MAPS=[["mirage","Mirage"],["inferno","Inferno"],["nuke","Nuke"],["ancient","Ancient"],["dust2","Dust II"],["anubis","Anubis"],["cache","Cache"],["vertigo","Vertigo"]];
-const SIDES=[["ct","CT"],["t","T"]], LOCS=[["instant","Instant"],["a","A"],["b","B"],["mid","Mid"]];
-const $=s=>document.querySelector(s), docs={}, ids=a=>a.map(x=>x[0]);
-let st={map:"mirage",side:"t",loc:"instant"}, tok=0, group=[], gi=0, keepY=null, local={};   // local: repo path -> blob URL of just-uploaded images (shown until the site rebuilds)
+const MAPS=[
+  ["mirage","Mirage"],["inferno","Inferno"],["nuke","Nuke"],["ancient","Ancient"],
+  ["dust2","Dust II"],["anubis","Anubis"],["cache","Cache"],["vertigo","Vertigo"]
+];
+const SIDES=[["ct","CT"],["t","T"]];
+const LOCS=[["instant","Instant"],["a","A"],["b","B"],["mid","Mid"]];
+const $=s=>document.querySelector(s);
+const docs={};
+const ids=a=>a.map(x=>x[0]);
+
+let st={map:"mirage",side:"t",loc:"instant"};
+let tok=0,group=[],gi=0,keepY=null,local={};
 
 function mk(box,list,key){
-  list.forEach(([v,l])=>{const b=document.createElement("button");b.textContent=l;b.dataset.v=v;
-    b.onclick=()=>go({[key]:v});$(box).append(b)});
+  list.forEach(([v,l])=>{
+    const b=document.createElement("button");
+    b.textContent=l;b.dataset.v=v;
+    b.onclick=()=>go({[key]:v});
+    $(box).append(b);
+  });
 }
 mk("#maps",MAPS,"map");mk("#side",SIDES,"side");mk("#loc",LOCS,"loc");
 
-function go(p){const n={...st,...p};location.hash=`${n.map}/${n.side}/${n.loc}`}
+function go(p){
+  const n={...st,...p};
+  location.hash=n.map+"/"+n.side+"/"+n.loc;
+}
 function parse(){
   const [m,s,l]=location.hash.slice(1).split("/");
-  if(ids(MAPS).includes(m))st.map=m; if(ids(SIDES).includes(s))st.side=s; if(ids(LOCS).includes(l))st.loc=l;
+  if(ids(MAPS).includes(m))st.map=m;
+  if(ids(SIDES).includes(s))st.side=s;
+  if(ids(LOCS).includes(l))st.loc=l;
 }
 async function load(m){
-  const r=await fetch(`maps/${m}.html`,{cache:"no-cache"}); if(!r.ok)throw 0;
+  const r=await fetch("maps/"+m+".html",{cache:"no-cache"});
+  if(!r.ok)throw 0;
   return new DOMParser().parseFromString(await r.text(),"text/html");
 }
-function note(t){const p=document.createElement("p");p.className="msg";p.textContent=t;return p}
-
-// TAGS-START
-const OVERVIEW=/\bSpawns\s*$/i;   // overview images ("T Spawns", "CT Spawns", "Mirage T Spawns"): no tags, and hidden whenever a tag is selected
-const tagsOf=title=>{
-  const t=title.replace(/\s+/g," ").trim();
-  const left=t.split(/\s+[-\u2013\u2014]\s+/)[0];
-  if(OVERVIEW.test(left))return {ov:true,spawn:null,area:""};
-  const m=/\bSpawn\s+(\d+)\b/i.exec(t);
-  return {ov:false,spawn:m?+m[1]:null,area:left.replace(/\s*\bSpawn\s+\d+\b.*$/i,"").trim()};
-};
-const chipText=t=>t.split(/\s+[-\u2013\u2014]\s+/)[0].trim()||t;   // chips show only what is before the dash
-const visible=(i,f)=>(f.spawn===null&&f.area===null)||(!i.ov&&(f.spawn===null||i.spawn===f.spawn)&&(f.area===null||i.area.toLowerCase()===f.area));
-// TAGS-END
-let flt={spawn:null,area:null}, fkey="";   // current tag filter; reset whenever map/side/location changes
-
-async function render(){
-  parse(); const t=++tok; hvOff();
-  const key=`${st.map}/${st.side}/${st.loc}`; if(key!==fkey){flt={spawn:null,area:null};fkey=key}
-  try{localStorage.setItem("nades-last",location.hash)}catch(e){}
-  [["#maps","map"],["#side","side"],["#loc","loc"]].forEach(([id,k])=>
-    document.querySelectorAll(id+" button").forEach(b=>b.classList.toggle("on",b.dataset.v==st[k])));
-  const out=$("#out"); out.replaceChildren();
-  let doc;
-  try{doc=docs[st.map]||(docs[st.map]=await load(st.map))}
-  catch(e){if(t==tok)out.append(note("No file for this map yet: add maps/"+st.map+".html"));return}
-  if(t!=tok)return;
-  const sec=doc.querySelector(`section[data-side="${st.side}"][data-loc="${st.loc}"]`);
-  const arts=sec?[...sec.querySelectorAll("article")]:[];
-  if(!arts.length){out.append(note("No lineups here yet."));return}
-  const items=arts.map(a=>({a,info:tagsOf(a.querySelector("h3")?.textContent||"")}));
-  const spawns=[...new Set(items.map(x=>x.info.spawn).filter(n=>n!==null))].sort((p,q)=>p-q);
-  const areas=new Map(); items.forEach(({info})=>{const k=info.area.toLowerCase();if(!info.ov&&!areas.has(k))areas.set(k,info.area)});
-  if(areas.has("")&&areas.size<2)areas.delete("");
-  if(st.loc!=="instant"||!spawns.includes(flt.spawn))flt.spawn=null;
-  if(flt.area!==null&&!areas.has(flt.area))flt.area=null;
-  const rows=document.createElement("div"); out.append(rows);
-  const mkRow=(label,k,opts)=>{
-    const r=document.createElement("div");r.className="tags";
-    const l=document.createElement("span");l.className="lbl";l.textContent=label;r.append(l);
-    if(!opts.length){const n=document.createElement("span");n.className="msg";n.textContent="none in titles";r.append(n)}
-    opts.forEach(([v,txt])=>{const b=document.createElement("button");b.textContent=txt;b.dataset.k=k;b.dataset.v=String(v);
-      b.onclick=()=>{if(k=="s")flt.spawn=flt.spawn===v?null:v;else flt.area=flt.area===v?null:v;apply()};r.append(b)});
-    rows.append(r);
-  };
-  if(st.loc==="instant")mkRow("Spawn","s",spawns.map(n=>[n,String(n)]));
-  mkRow("Area","a",[...areas].map(([k,txt])=>[k,k===""?"No area":txt]));
-  const nav=document.createElement("nav");nav.className="row";out.append(nav);
-  const empty=note("No lineups match this filter.");empty.hidden=true;out.append(empty);
-  const views=[];
-  items.forEach(({a,info})=>{
-    const c=a.cloneNode(true);
-    c.querySelectorAll("img").forEach(i=>i.loading="lazy");
-    c.querySelectorAll(".shots").forEach(g=>g.classList.toggle("one",g.querySelectorAll("img").length==1));
-    if(window.addDel)addDel(c);
-    c.querySelectorAll("img").forEach(i=>{const p=i.getAttribute("src");i.dataset.orig=p;const u=local[p];if(u)i.src=u});
-    out.append(c);
-    const b=document.createElement("button");b.textContent=chipText(c.querySelector("h3").textContent);b.title=c.querySelector("h3").textContent;
-    b.onclick=()=>c.scrollIntoView({behavior:"smooth"});nav.append(b);
-    views.push({c,b,info});
-  });
-  function apply(){
-    views.forEach(({c,b,info})=>{const v=visible(info,flt);c.hidden=!v;b.hidden=!v});
-    rows.querySelectorAll("button").forEach(x=>x.classList.toggle("on",x.dataset.k=="s"?flt.spawn===+x.dataset.v:flt.area===x.dataset.v));
-    empty.hidden=!(flt.spawn!==null||flt.area!==null)||views.some(v=>!v.c.hidden);
-  }
-  apply();
-  if(keepY==null)scrollTo(0,0);else{scrollTo(0,keepY);keepY=null}
+function note(t){
+  const p=document.createElement("p");p.className="msg";p.textContent=t;return p;
 }
 
-// Click an image to enlarge; click again or press Esc to close; arrow keys flip through that lineup's images
+/* Title contract:
+   "|" is the canonical separator. Legacy " - " is normalized so old files remain usable.
+   Hyphens inside words (e.g. "Middle-click") are not treated as separators. */
+const TITLE_SEP="|";
+const normalizeTitle=t=>{
+  return t.replace(/\s+/g," ").trim()
+    .replace(/\s*[-–—]\s+/g," | ")
+    .replace(/\s*\|\s*/g," | ");
+};
+const OVERVIEW=/\bSpawns\s*$/i;
+const tagsOf=title=>{
+  const t=normalizeTitle(title);
+  const left=t.split(TITLE_SEP)[0].trim();
+  if(OVERVIEW.test(left))return {ov:true,spawn:null,area:""};
+  const m=/\bSpawn\s+(\d+)\b/i.exec(left);
+  return {
+    ov:false,
+    spawn:m?+m[1]:null,
+    area:left.replace(/\s*\bSpawn\s+\d+\b.*$/i,"").trim()
+  };
+};
+const titleForUi=t=>normalizeTitle(t);
+const visible=(i,f)=>{
+  return !i.ov &&
+    (f.spawn===null||i.spawn===f.spawn) &&
+    (f.area===null||i.area.toLowerCase()===f.area);
+};
+
+let flt={spawn:null,area:null};
+let fkey="";
+let filterViews=[],filterRows=null,filterEmpty=null,filterCount=null;
+
+function makeTagGroup(parent,label,key,opts,kind){
+  const group=document.createElement("div");
+  group.className="tag-group";
+  group.dataset.kind=kind;
+  group.dataset.side=st.side;
+
+  const title=document.createElement("div");
+  title.className="tag-label";
+  title.textContent=label;
+  group.append(title);
+
+  const options=document.createElement("div");
+  options.className="tag-options";
+
+  if(!opts.length){
+    const empty=document.createElement("div");
+    empty.className="empty-tags";
+    empty.textContent="none in titles";
+    options.append(empty);
+  }else{
+    opts.forEach(([value,text])=>{
+      const b=document.createElement("button");
+      b.textContent=text;
+      b.dataset.k=key;
+      b.dataset.v=String(value);
+      b.onclick=()=>{
+        if(key==="s")flt.spawn=flt.spawn===value?null:value;
+        else flt.area=flt.area===value?null:value;
+        applyFilters();
+      };
+      options.append(b);
+    });
+  }
+  group.append(options);
+  parent.append(group);
+}
+
+function applyFilters(){
+  filterViews.forEach(({c})=>{c.hidden=!visible(c.__tagInfo,flt)});
+
+  if(filterRows){
+    filterRows.querySelectorAll("button").forEach(x=>{
+      x.classList.toggle(
+        "on",
+        x.dataset.k==="s"
+          ? flt.spawn===+x.dataset.v
+          : flt.area===x.dataset.v
+      );
+    });
+  }
+
+  const shown=filterViews.filter(v=>!v.c.hidden).length;
+  if(filterCount){
+    filterCount.textContent=
+      (flt.spawn!==null||flt.area!==null)
+        ? "Showing "+shown+" of "+filterViews.length
+        : shown+" lineups";
+  }
+  if(filterEmpty){
+    filterEmpty.hidden=shown>0||!(flt.spawn!==null||flt.area!==null);
+  }
+}
+
+async function render(){
+  parse();
+  const t=++tok;
+  const key=st.map+"/"+st.side+"/"+st.loc;
+
+  if(key!==fkey){
+    flt={spawn:null,area:null};
+    fkey=key;
+  }
+
+  try{localStorage.setItem("nades-last",location.hash)}catch(e){}
+
+  [["#maps","map"],["#side","side"],["#loc","loc"]].forEach(([id,k])=>{
+    document.querySelectorAll(id+" button")
+      .forEach(b=>b.classList.toggle("on",b.dataset.v==st[k]));
+  });
+
+  const out=$("#out");
+  out.replaceChildren();
+  filterViews=[];filterRows=null;filterEmpty=null;filterCount=null;
+
+  let doc;
+  try{doc=docs[st.map]||(docs[st.map]=await load(st.map))}
+  catch(e){
+    if(t===tok)out.append(note("No file for this map yet: add maps/"+st.map+".html"));
+    return;
+  }
+  if(t!==tok)return;
+
+  const sec=doc.querySelector(
+    'section[data-side="'+st.side+'"][data-loc="'+st.loc+'"]'
+  );
+  const arts=sec?[...sec.querySelectorAll("article")]:[];
+  if(!arts.length){
+    out.append(note("No lineups here yet."));
+    return;
+  }
+
+  const items=arts.map(a=>({
+    a,
+    info:tagsOf(a.querySelector("h3")?.textContent||"")
+  }));
+
+  const spawns=[...new Set(
+    items.map(x=>x.info.spawn).filter(n=>n!==null)
+  )].sort((a,b)=>a-b);
+
+  const areas=new Map();
+  items.forEach(({info})=>{
+    const k=info.area.toLowerCase();
+    if(!info.ov&&k&&!areas.has(k))areas.set(k,info.area);
+  });
+
+  if(st.loc!=="instant"||!spawns.includes(flt.spawn))flt.spawn=null;
+  if(flt.area!==null&&!areas.has(flt.area))flt.area=null;
+
+  const filters=document.createElement("section");
+  filters.id="filters";
+
+  const summary=document.createElement("div");
+  summary.className="filter-summary";
+
+  const strong=document.createElement("strong");
+  strong.textContent=st.loc==="instant"?"Quick filters":"Areas";
+
+  filterCount=document.createElement("span");
+  summary.append(strong,filterCount);
+  filters.append(summary);
+
+  if(st.loc==="instant"){
+    const band=document.createElement("div");
+    band.className="instant-top";
+
+    const panel=document.createElement("div");
+    panel.className="filter-panel";
+    filterRows=panel;
+
+    makeTagGroup(panel,"Spawn","s",spawns.map(n=>[n,String(n)]),"spawn");
+    makeTagGroup(panel,"Area","a",[...areas].map(([k,txt])=>[k,txt]),"area");
+    band.append(panel);
+
+    const overview=items.find(x=>x.info.ov);
+    const overviewBox=document.createElement("div");
+    overviewBox.className="spawn-overview";
+
+    if(overview){
+      const ot=document.createElement("h3");
+      ot.textContent=titleForUi(
+        overview.a.querySelector("h3")?.textContent||"Spawns"
+      );
+
+      const oi=overview.a.querySelector("img")?.cloneNode(true);
+      if(oi){
+        oi.loading="eager";
+        const p=oi.getAttribute("src");
+        oi.dataset.orig=p;
+        if(local[p])oi.src=local[p];
+        oi.alt=ot.textContent;
+        overviewBox.append(ot,oi);
+      }else{
+        overviewBox.append(ot,note("No overview image found."));
+      }
+    }else{
+      const ot=document.createElement("h3");
+      ot.textContent=st.side.toUpperCase()+" Spawns";
+      overviewBox.append(
+        ot,
+        note('Add a lineup titled "'+st.side.toUpperCase()+
+             ' Spawns" to show the spawn overview here.')
+      );
+    }
+
+    band.append(overviewBox);
+    filters.append(band);
+  }else{
+    const panel=document.createElement("div");
+    panel.className="filters-only";
+    filterRows=panel;
+    makeTagGroup(
+      panel,"Area","a",[...areas].map(([k,txt])=>[k,txt]),"area"
+    );
+    filters.append(panel);
+  }
+
+  out.append(filters);
+
+  /* Overview stays in the top block on instant pages rather than becoming a
+     filtered lineup. */
+  const lineupItems=items.filter(x=>!(st.loc==="instant"&&x.info.ov));
+
+  const list=document.createElement("section");
+  list.id="lineups";
+  out.append(list);
+
+  filterEmpty=note("No lineups match this filter.");
+  filterEmpty.hidden=true;
+  list.append(filterEmpty);
+
+  lineupItems.forEach(({a,info})=>{
+    const c=a.cloneNode(true);
+    c.classList.add("lineup");
+    c.__tagInfo=info;
+
+    const h=c.querySelector("h3");
+    if(h)h.textContent=titleForUi(h.textContent);
+
+    c.querySelectorAll("img").forEach(i=>{
+      i.loading="lazy";
+      const p=i.getAttribute("src");
+      i.dataset.orig=p;
+      const u=local[p];
+      if(u)i.src=u;
+    });
+
+    if(window.addDel)addDel(c);
+    list.append(c);
+    filterViews.push({c});
+  });
+
+  applyFilters();
+
+  if(keepY==null)scrollTo(0,0);
+  else{scrollTo(0,keepY);keepY=null}
+}
+
+/* Click-to-enlarge remains. The hover enlargement feature is intentionally gone. */
 const lb=$("#lb");
-function show(){$("#lb img").src=group[gi].src;lb.hidden=false}
+function show(){ $("#lb img").src=group[gi].src;lb.hidden=false }
+
 document.addEventListener("click",e=>{
-  const i=e.target.closest("#out img"); if(!i)return;
-  group=[...i.closest("article").querySelectorAll("img")]; gi=group.indexOf(i); show();
+  const i=e.target.closest?.("#out img");
+  if(!i)return;
+  group=[...i.closest("article").querySelectorAll("img")];
+  gi=group.indexOf(i);
+  show();
 });
 lb.onclick=()=>lb.hidden=true;
 
-// Keyboard: only used inside the image viewer (Esc / arrows). No key ever changes the page.
 addEventListener("keydown",e=>{
   if(lb.hidden||e.ctrlKey||e.altKey||e.metaKey)return;
-  const k=e.key.toLowerCase();
-  if(k=="escape")lb.hidden=true;
-  if(k=="arrowright"){gi=(gi+1)%group.length;show()}
-  if(k=="arrowleft"){gi=(gi-1+group.length)%group.length;show()}
+  if(e.key==="Escape")lb.hidden=true;
+  if(e.key==="ArrowRight"){gi=(gi+1)%group.length;show()}
+  if(e.key==="ArrowLeft"){gi=(gi-1+group.length)%group.length;show()}
 });
 
-// ---- Edit mode: drag-drop images, add/rename/delete lineups, saved straight to the repo ----
-// TEXTOPS-START
-const esc=s=>s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
-const dec=b=>new TextDecoder().decode(Uint8Array.from(atob(b.replace(/\n/g,"")),c=>c.charCodeAt(0)));
-const b64=s=>{let o="";for(const x of (typeof s=="string"?new TextEncoder().encode(s):s))o+=String.fromCharCode(x);return btoa(o)};
-const mkArt=(title,map,names)=>`<article>\n  <h3>${esc(title)}</h3>\n  <div class="shots">\n${names.map(n=>`    <img src="img/${map}/${n}">`).join("\n")}\n  </div>\n</article>\n`;
-const addTo=(t,side,loc,art)=>{const o=t.indexOf(`<section data-side="${side}" data-loc="${loc}">`),e=o<0?-1:t.indexOf("</section>",o);
-  if(e<0)throw new Error("Section not found in map file");return t.slice(0,e)+art+t.slice(e)};
-const rx=s=>s.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
-const locate=(t,src,title)=>{   // find the <article> block: by image src (any quote style/spacing), else by <h3> title
-  const bs=[...t.matchAll(/<article\b[\s\S]*?<\/article>/gi)].map(m=>[m.index,m.index+m[0].length]);
-  const sr=new RegExp(`src\\s*=\\s*["']?(?:\\./|/)?(?:${rx(src)}|${rx(esc(src))})(?=["'\\s>/])`,"i");
-  let b=bs.find(([a,z])=>sr.test(t.slice(a,z)));
-  if(!b&&title){const w=title.trim();
-    b=bs.find(([a,z])=>{const m=/<h3[^>]*>([\s\S]*?)<\/h3>/i.exec(t.slice(a,z));return m&&(m[1].trim()==w||m[1].trim()==esc(w))})}
-  if(!b)throw new Error("Lineup not found in map file");
-  return b};
-const dropAt=(t,src,title)=>{const [a,z]=locate(t,src,title);return t.slice(0,a)+t.slice(z).replace(/^\n/,"")};
-const moveArt=(t,sa,ta,sb,tb,before)=>{   // move lineup A before/after lineup B
-  const [a,z]=locate(t,sa,ta),blk=t.slice(a,z),r=t.slice(0,a)+t.slice(z).replace(/^\n/,""),[c,d]=locate(r,sb,tb);
-  return before?r.slice(0,c)+blk+"\n"+r.slice(c):r.slice(0,d)+"\n"+blk+r.slice(d)};
-const moveImg=(t,src,title,from,to,n)=>{   // reorder the <img> tags inside one lineup
-  const [a,z]=locate(t,src,title),blk=t.slice(a,z),arr=blk.match(/<img\b[^>]*>/gi)||[];
-  if(arr.length!=n)throw new Error("Image count in map file differs from the page. Reload and try again");
-  arr.splice(to,0,arr.splice(from,1)[0]);let k=0;
-  return t.slice(0,a)+blk.replace(/<img\b[^>]*>/gi,()=>arr[k++])+t.slice(z)};
-const retitle=(t,src,title,old)=>{const [a,z]=locate(t,src,old),blk=t.slice(a,z),
-  nb=blk.replace(/(<h3[^>]*>)[\s\S]*?(<\/h3>)/i,(m,o,c)=>o+esc(title)+c);
-  if(!/<h3[^>]*>/i.test(blk))throw new Error("Title not found");return t.slice(0,a)+nb+t.slice(z)};
-const norm=s=>{s=s.replace(/&amp;/g,"&");try{s=decodeURIComponent(s)}catch(e){}return s.replace(/^\.?\//,"")};
-const srcsOf=h=>[...h.matchAll(/<img\b[^>]*?\bsrc\s*=\s*["']?([^"'\s>]+)/gi)].map(m=>norm(m[1]));
-const ownImgs=(t,src,title)=>{   // image files used only by this lineup (safe to delete along with it)
-  const [a,z]=locate(t,src,title),keep=new Set(srcsOf(t.slice(0,a)+t.slice(z)));
-  return [...new Set(srcsOf(t.slice(a,z)))].filter(p=>/^img\/[^?#]+$/.test(p)&&!p.includes("..")&&!keep.has(p))};
-// TEXTOPS-END
-const P=new URLSearchParams(location.search), EDIT=!P.has("view")&&P.has("edit"), MAXW=1600;
+/* Edit mode. Reuses the existing token-based GitHub workflow while making
+   | the canonical title separator for every new/renamed title. */
+const P=new URLSearchParams(location.search);
+const EDIT=!P.has("view")&&P.has("edit");
+const MAXW=1600;
+
 if(EDIT){
-  const R=`${location.hostname.split(".")[0]}/${location.pathname.split("/")[1]}`;
-  const label=s=>[MAPS,SIDES,LOCS].map((a,i)=>a.find(x=>x[0]==s[["map","side","loc"][i]])[1]).join(" / ");
-  let pending=[], dest=null, drag=null;
-  const clearMarks=()=>document.querySelectorAll(".drop-before,.drop-after").forEach(x=>x.classList.remove("drop-before","drop-after"));
+  const R=location.hostname.split(".")[0]+"/"+location.pathname.split("/")[1];
+  const label=s=>[MAPS,SIDES,LOCS]
+    .map((a,i)=>a.find(x=>x[0]===s[["map","side","loc"][i]])?.[1]||s)
+    .join(" / ");
+
+  let pending=[],dest=null,drag=null,br=null;
+
   $("#draft").hidden=false;
   const say=m=>$("#dh").textContent=m;
-  const idle=()=>say(`Edit mode: drop or paste (Ctrl+V) images anywhere on this page to add a lineup to ${label(st)}. Drag "Move" to reorder lineups, or drag an image to reorder within its lineup.`);
-  idle(); addEventListener("hashchange",()=>{if(!pending.length)idle()});
-  const tok=()=>{let t="";try{t=localStorage.getItem("nades-token")||""}catch(e){}
-    if(!t){t=(prompt("Paste your GitHub token once (kept only in this browser):")||"").trim();try{if(t)localStorage.setItem("nades-token",t)}catch(e){}}return t};
-  // GH-START
-  let br=null;
+  const idle=()=>say(
+    'Edit mode: drop or paste images to add a lineup to '+label(st)+
+    '. Drag "Move" to reorder lineups, or drag an image to reorder within its lineup.'
+  );
+  idle();
+
+  addEventListener("hashchange",()=>{if(!pending.length)idle()});
+
+  const tokForGithub=()=>{
+    let t="";
+    try{t=localStorage.getItem("nades-token")||""}catch(e){}
+    if(!t){
+      t=(prompt(
+        "Paste your GitHub token once (kept only in this browser):"
+      )||"").trim();
+      try{if(t)localStorage.setItem("nades-token",t)}catch(e){}
+    }
+    return t;
+  };
+
   async function gh(path,opt={}){
-    const r=await fetch(`https://api.github.com/repos/${R}${path?"/"+path:""}`,{cache:"no-store",...opt,headers:{Authorization:"Bearer "+tok(),Accept:"application/vnd.github+json","Content-Type":"application/json"}});
-    if(!r.ok){if(r.status==401)try{localStorage.removeItem("nades-token")}catch(e){};const e=new Error(r.status+" "+(await r.text()).slice(0,150));e.status=r.status;throw e}
+    const r=await fetch(
+      "https://api.github.com/repos/"+R+(path?"/"+path:""),
+      {
+        cache:"no-store",
+        ...opt,
+        headers:{
+          Authorization:"Bearer "+tokForGithub(),
+          Accept:"application/vnd.github+json",
+          "Content-Type":"application/json"
+        }
+      }
+    );
+    if(!r.ok){
+      if(r.status===401)try{localStorage.removeItem("nades-token")}catch(e){}
+      const err=new Error(r.status+" "+(await r.text()).slice(0,150));
+      err.status=r.status;
+      throw err;
+    }
     return r.json();
   }
-  // One atomic commit per action (new images + map file + deletions together = one site rebuild).
-  // plan(ctx) returns {write:{path:{text}|{b64}}, del:[paths]}. If the branch moved meanwhile, it re-plans and retries.
+
+  const esc=s=>s.replace(/&/g,"&amp;")
+    .replace(/</g,"&lt;").replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;");
+
+  const dec=b=>new TextDecoder().decode(
+    Uint8Array.from(atob(b.replace(/\n/g,"")),c=>c.charCodeAt(0))
+  );
+  const b64=s=>{
+    let o="";
+    for(const x of (typeof s==="string"?new TextEncoder().encode(s):s))
+      o+=String.fromCharCode(x);
+    return btoa(o);
+  };
+
+  const mkArt=(title,map,names)=>`<article>
+  <h3>${esc(title)}</h3>
+  <div class="shots">
+${names.map(n=>`    <img src="img/${map}/${n}">`).join("\n")}
+  </div>
+</article>
+`;
+
+  const addTo=(t,side,loc,art)=>{
+    const o=t.indexOf(
+      '<section data-side="'+side+'" data-loc="'+loc+'">'
+    );
+    const e=o<0?-1:t.indexOf("</section>",o);
+    if(e<0)throw new Error("Section not found in map file");
+    return t.slice(0,e)+art+t.slice(e);
+  };
+
+  const rx=s=>s.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+
+  const locate=(t,src,title)=>{
+    const bs=[...t.matchAll(
+      /<article\b[\s\S]*?<\/article>/gi
+    )].map(m=>[m.index,m.index+m[0].length]);
+
+    const sr=new RegExp(
+      'src\\s*=\\s*["\\\']?(?:\\./|/)?(?:'+
+      rx(src)+'|'+rx(esc(src))+')(?=["\\\'\\s>/])',
+      "i"
+    );
+
+    let b=bs.find(([a,z])=>sr.test(t.slice(a,z)));
+
+    if(!b&&title){
+      const w=normalizeTitle(title).trim();
+      b=bs.find(([a,z])=>{
+        const m=/<h3[^>]*>([\s\S]*?)<\/h3>/i.exec(t.slice(a,z));
+        return m&&normalizeTitle(m[1].trim())===w;
+      });
+    }
+
+    if(!b)throw new Error("Lineup not found in map file");
+    return b;
+  };
+
+  const dropAt=(t,src,title)=>{
+    const [a,z]=locate(t,src,title);
+    return t.slice(0,a)+t.slice(z).replace(/^\n/,"");
+  };
+
+  const moveArt=(t,sa,ta,sb,tb,before)=>{
+    const [a,z]=locate(t,sa,ta);
+    const blk=t.slice(a,z);
+    const r=t.slice(0,a)+t.slice(z).replace(/^\n/,"");
+    const [c,d]=locate(r,sb,tb);
+    return before
+      ? r.slice(0,c)+blk+"\n"+r.slice(c)
+      : r.slice(0,d)+"\n"+blk+r.slice(d);
+  };
+
+  const moveImg=(t,src,title,from,to,n)=>{
+    const [a,z]=locate(t,src,title);
+    const blk=t.slice(a,z);
+    const arr=blk.match(/<img\b[^>]*>/gi)||[];
+    if(arr.length!==n)throw new Error(
+      "Image count in map file differs from the page. Reload and try again"
+    );
+    arr.splice(to,0,arr.splice(from,1)[0]);
+    let k=0;
+    return t.slice(0,a)+blk.replace(
+      /<img\b[^>]*>/gi,()=>arr[k++]
+    )+t.slice(z);
+  };
+
+  const retitle=(t,src,title,old)=>{
+    const [a,z]=locate(t,src,old);
+    const blk=t.slice(a,z);
+    const nb=blk.replace(
+      /(<h3[^>]*>)[\s\S]*?(<\/h3>)/i,
+      (m,o,c)=>o+esc(normalizeTitle(title))+c
+    );
+    return t.slice(0,a)+nb+t.slice(z);
+  };
+
+  const normPath=s=>{
+    s=s.replace(/&amp;/g,"&");
+    try{s=decodeURIComponent(s)}catch(e){}
+    return s.replace(/^\.?\//,"");
+  };
+
+  const srcsOf=h=>[
+    ...h.matchAll(
+      /<img\b[^>]*?\bsrc\s*=\s*["']?([^"'\s>]+)/gi
+    )
+  ].map(m=>normPath(m[1]));
+
+  const ownImgs=(t,src,title)=>{
+    const [a,z]=locate(t,src,title);
+    const keep=new Set(srcsOf(t.slice(0,a)+t.slice(z)));
+    return [...new Set(srcsOf(t.slice(a,z)))]
+      .filter(p=>/^img\/[^?#]+$/.test(p)&&!p.includes("..")&&!keep.has(p));
+  };
+
   async function commit(msg,plan){
     const blobs={};
-    for(let n=0;;n++){
-      br=br||await gh("").then(r=>r.default_branch,()=>"main");
-      const head=(await gh(`git/ref/heads/${br}`)).object.sha, base=(await gh(`git/commits/${head}`)).tree.sha;
-      const listDir=async dir=>{let sha=base;
-        for(const seg of dir.split("/")){const e=(await gh(`git/trees/${sha}`)).tree.find(x=>x.path==seg&&x.type=="tree");if(!e)return new Set();sha=e.sha}
-        return new Set((await gh(`git/trees/${sha}`)).tree.filter(x=>x.type=="blob").map(x=>x.path))};
-      const {write={},del=[]}=await plan({read:async p=>dec((await gh(`contents/${p}?ref=${head}`)).content),files:listDir});
-      const tree=[], ks=Object.keys(write), nimg=ks.filter(p=>write[p].b64!=null).length;
-      for(const p of ks){
+
+    for(let attempt=0;attempt<3;attempt++){
+      br=br||await gh("").then(r=>r.default_branch,()=> "main");
+      const head=(await gh("git/ref/heads/"+br)).object.sha;
+      const base=(await gh("git/commits/"+head)).tree.sha;
+
+      const listDir=async dir=>{
+        let sha=base;
+        for(const seg of dir.split("/")){
+          const e=(await gh("git/trees/"+sha)).tree.find(
+            x=>x.path===seg&&x.type==="tree"
+          );
+          if(!e)return new Set();
+          sha=e.sha;
+        }
+        return new Set(
+          (await gh("git/trees/"+sha)).tree
+            .filter(x=>x.type==="blob").map(x=>x.path)
+        );
+      };
+
+      const {write={},del=[]}=await plan({
+        read:async p=>dec((await gh("contents/"+p+"?ref="+head)).content),
+        files:listDir
+      });
+
+      const tree=[];
+      for(const p of Object.keys(write)){
         const v=write[p];
-        if(v.text!=null){tree.push({path:p,mode:"100644",type:"blob",content:v.text});continue}
-        if(!blobs[p]){say(`Uploading image ${Object.keys(blobs).length+1} of ${nimg}...`);
-          blobs[p]=(await gh("git/blobs",{method:"POST",body:JSON.stringify({content:v.b64,encoding:"base64"})})).sha}
-        tree.push({path:p,mode:"100644",type:"blob",sha:blobs[p]});
+        if(v.text!=null){
+          tree.push({path:p,mode:"100644",type:"blob",content:v.text});
+        }else{
+          if(!blobs[p]){
+            blobs[p]=(await gh("git/blobs",{
+              method:"POST",
+              body:JSON.stringify({content:v.b64,encoding:"base64"})
+            })).sha;
+          }
+          tree.push({path:p,mode:"100644",type:"blob",sha:blobs[p]});
+        }
       }
-      del.forEach(p=>tree.push({path:p,mode:"100644",type:"blob",sha:null}));
+      del.forEach(p=>tree.push({
+        path:p,mode:"100644",type:"blob",sha:null
+      }));
       if(!tree.length)return;
-      say("Committing...");
-      const nt=await gh("git/trees",{method:"POST",body:JSON.stringify({base_tree:base,tree})});
-      const nc=await gh("git/commits",{method:"POST",body:JSON.stringify({message:msg,tree:nt.sha,parents:[head]})});
-      try{await gh(`git/refs/heads/${br}`,{method:"PATCH",body:JSON.stringify({sha:nc.sha})});return}
-      catch(e){if(e.status!=422||n>=2)throw e}
+
+      const nt=await gh("git/trees",{
+        method:"POST",
+        body:JSON.stringify({base_tree:base,tree})
+      });
+      const nc=await gh("git/commits",{
+        method:"POST",
+        body:JSON.stringify({
+          message:msg,tree:nt.sha,parents:[head]
+        })
+      });
+
+      try{
+        await gh("git/refs/heads/"+br,{
+          method:"PATCH",
+          body:JSON.stringify({sha:nc.sha})
+        });
+        return;
+      }catch(e){
+        if(e.status!==422||attempt===2)throw e;
+      }
     }
   }
-  const mutate=(map,fn,msg)=>commit(msg,async ctx=>{const p=`maps/${map}.html`,o=await ctx.read(p),n=fn(o);return n==o?{}:{write:{[p]:{text:n}}}});
-  // GH-END
-  const cached=(map,src)=>[...(docs[map]?docs[map].querySelectorAll("article"):[])].find(x=>x.querySelector("img")?.getAttribute("src")==src);
+
+  const mutate=(map,fn,msg)=>commit(msg,async ctx=>{
+    const p="maps/"+map+".html";
+    const old=await ctx.read(p),next=fn(old);
+    return next===old?{}:{write:{[p]:{text:next}}};
+  });
+
   async function shrink(f){
-    const bm=await createImageBitmap(f), k=Math.min(1,MAXW/bm.width), c=document.createElement("canvas");
-    c.width=Math.round(bm.width*k);c.height=Math.round(bm.height*k);
+    const bm=await createImageBitmap(f);
+    const k=Math.min(1,MAXW/bm.width);
+    const c=document.createElement("canvas");
+    c.width=Math.round(bm.width*k);
+    c.height=Math.round(bm.height*k);
     c.getContext("2d").drawImage(bm,0,0,c.width,c.height);
     const b=await new Promise(r=>c.toBlob(r,"image/jpeg",.82));
-    return {b64:b64(new Uint8Array(await b.arrayBuffer())),url:URL.createObjectURL(b)};
+    return {
+      b64:b64(new Uint8Array(await b.arrayBuffer())),
+      url:URL.createObjectURL(b)
+    };
   }
+
   function paint(){
-    $("#df").hidden=!pending.length; $("#dth").replaceChildren();
-    pending.forEach((f,i)=>{const im=document.createElement("img");im.src=URL.createObjectURL(f);
-      im.title="Click to remove";im.onclick=()=>{pending.splice(i,1);paint()};$("#dth").append(im)});
-    pending.length?say(`Adding ${pending.length} image(s) to ${label(dest)}`):idle();
+    $("#df").hidden=!pending.length;
+    $("#dth").replaceChildren();
+
+    pending.forEach((f,i)=>{
+      const im=document.createElement("img");
+      im.src=URL.createObjectURL(f);
+      im.title="Click to remove";
+      im.onclick=()=>{
+        pending.splice(i,1);paint();
+      };
+      $("#dth").append(im);
+    });
+
+    pending.length
+      ? say("Adding "+pending.length+" image(s) to "+label(dest))
+      : idle();
   }
-  async function live(url){   // just a status check: wait until the rebuilt site serves the new file
-    for(let i=0;i<36;i++){
-      await new Promise(r=>setTimeout(r,5000));
-      try{const r=await fetch(url+"?t="+Date.now(),{cache:"no-store"});if(r.ok){if(!pending.length)say("Live on the site.");return}}catch(e){}
-    }
-    if(!pending.length)say("Saved, but the site is still rebuilding. Reload in a minute or two.");
-  }
-  addEventListener("dragover",e=>e.preventDefault());
+
   const addFiles=fs=>{
-    fs=fs.filter(f=>f&&f.type.startsWith("image/")); if(!fs.length)return false;
+    fs=fs.filter(f=>f&&f.type.startsWith("image/"));
+    if(!fs.length)return false;
     if(!pending.length)dest={...st};
-    pending=pending.concat(fs).sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true}));
-    paint();$("#dt").focus();return true;
+    pending=pending.concat(fs).sort(
+      (a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true})
+    );
+    paint();
+    $("#dt").focus();
+    return true;
   };
-  addEventListener("drop",e=>{e.preventDefault();addFiles([...e.dataTransfer.files])});
-  addEventListener("paste",e=>{   // Ctrl+V of an image (screenshot or copied file); plain text pastes are left alone
-    const cd=e.clipboardData; if(!cd)return;
+
+  addEventListener("dragover",e=>e.preventDefault());
+  addEventListener("drop",e=>{
+    e.preventDefault();
+    addFiles([...e.dataTransfer.files]);
+  });
+  addEventListener("paste",e=>{
+    const cd=e.clipboardData;
+    if(!cd)return;
     let fs=[...cd.files];
-    if(!fs.length)fs=[...cd.items].filter(i=>i.kind=="file").map(i=>i.getAsFile());
+    if(!fs.length)fs=[...cd.items]
+      .filter(i=>i.kind==="file").map(i=>i.getAsFile());
     if(addFiles(fs))e.preventDefault();
   });
-  const cl=document.createElement("button");cl.textContent="Clean up unused images";cl.style.cssText="font-size:12px;margin-bottom:8px";
-  cl.title="Delete files in img/<map>/ that no lineup on this map uses";$("#dh").after(cl);
-  cl.onclick=async()=>{
-    const map=st.map; let n=0;
-    try{
-      say(`Checking img/${map}/ ...`);
-      await commit("Remove unused images: "+map,async ctx=>{
-        const dir=`img/${map}`,used=new Set(srcsOf(await ctx.read(`maps/${map}.html`))),files=await ctx.files(dir);
-        const del=[...files].filter(f=>/\.(jpe?g|png|webp|gif)$/i.test(f)&&!used.has(`${dir}/${f}`)).map(f=>`${dir}/${f}`);
-        if(!del.length){say(`No unused images in ${dir}/.`);return {}}
-        if(!confirm(`Permanently delete ${del.length} unused image file(s) from ${dir}/ ?\n\n`+del.slice(0,8).map(x=>x.split("/").pop()).join("\n")+(del.length>8?"\n...":""))){say("Cancelled.");return {}}
-        n=del.length;return {del}});
-      if(n)say(`Removed ${n} unused image(s) from ${map}. The live site updates in about a minute.`);
-    }catch(err){say("Failed: "+err.message)}
+
+  $("#dc").onclick=()=>{
+    pending=[];$("#dt").value="";paint();
   };
-  $("#dc").onclick=()=>{pending=[];$("#dt").value="";paint()};
-  $("#dk").onclick=()=>{try{localStorage.removeItem("nades-token")}catch(e){};tok()};
+  $("#dk").onclick=()=>{
+    try{localStorage.removeItem("nades-token")}catch(e){}
+    tokForGithub();
+  };
+
   $("#ds").onclick=async()=>{
-    const title=$("#dt").value.trim().replace(/\s+/g," ");
+    const title=normalizeTitle($("#dt").value);
     if(!title)return say("Type a title first.");
-    if(!tok())return say("A token is needed to save.");
-    const {map,side,loc}=dest, id=Date.now().toString(36),
-      slug=title.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,40)||"lineup";
+    if(!tokForGithub())return say("A token is needed to save.");
+
+    const {map,side,loc}=dest;
+    const id=Date.now().toString(36);
+    const slug=title.toLowerCase()
+      .replace(/[^a-z0-9|]+/g,"-")
+      .replace(/\|/g,"-")
+      .replace(/^-+|-+$/g,"")
+      .slice(0,40)||"lineup";
+
     try{
-      const names=[], write={}, urls={};
+      const names=[],write={},urls={};
+
       for(let i=0;i<pending.length;i++){
-        say(`Preparing image ${i+1} of ${pending.length}...`);
-        const n=`${side}-${loc}-${slug}-${id}-${i+1}.jpg`, p=`img/${map}/${n}`, o=await shrink(pending[i]);
-        write[p]={b64:o.b64}; urls[p]=o.url; names.push(n);
+        say("Preparing image "+(i+1)+" of "+pending.length+"...");
+        const n=side+"-"+loc+"-"+slug+"-"+id+"-"+(i+1)+".jpg";
+        const p="img/"+map+"/"+n;
+        const o=await shrink(p);
+        write[p]={b64:o.b64};
+        urls[p]=o.url;
+        names.push(n);
       }
-      const art=mkArt(title,map,names), mp=`maps/${map}.html`;
-      await commit("Add lineup: "+title,async ctx=>{   // map file is checked first, so a bad section never leaves orphan images
-        write[mp]={text:addTo(await ctx.read(mp),side,loc,art)};return {write}});
-      Object.assign(local,urls);   // show the new lineup right away from the local copies
-      if(docs[map]){const sec=docs[map].querySelector(`section[data-side="${side}"][data-loc="${loc}"]`);
-        if(sec){const tp=document.createElement("template");tp.innerHTML=art;sec.append(tp.content.firstElementChild)}}
+
+      const art=mkArt(title,map,names);
+      const mp="maps/"+map+".html";
+
+      await commit("Add lineup: "+title,async ctx=>{
+        write[mp]={text:addTo(await ctx.read(mp),side,loc,art)};
+        return {write};
+      });
+
+      Object.assign(local,urls);
+      if(docs[map]){
+        const sec=docs[map].querySelector(
+          'section[data-side="'+side+'"][data-loc="'+loc+'"]'
+        );
+        if(sec){
+          const tp=document.createElement("template");
+          tp.innerHTML=art;
+          sec.append(tp.content.firstElementChild);
+        }
+      }
+
       pending=[];$("#dt").value="";paint();
-      if(st.map==map&&st.side==side&&st.loc==loc)render();
-      say("Saved in a single commit. Shown here already; the live site updates in about a minute...");
-      live(`img/${map}/${names[0]}`);
-    }catch(err){say("Failed: "+err.message)}
+      if(st.map===map&&st.side===side&&st.loc===loc)render();
+      say("Saved in one commit. The live site should update shortly.");
+    }catch(err){
+      say("Failed: "+err.message);
+    }
   };
+
   window.addDel=c=>{
-    const src=c.querySelector("img")?.dataset.orig||c.querySelector("img")?.getAttribute("src"), h=c.querySelector("h3"), map=st.map, row=document.createElement("div");
-    row.className="row";row.style.marginBottom="8px";
-    const mk2=(t,fn)=>{const b=document.createElement("button");b.textContent=t;b.style.fontSize="12px";
-      b.onclick=async()=>{try{await fn()}catch(err){say("Failed: "+err.message)}};row.append(b)};
+    const first=c.querySelector("img");
+    const src=first?.dataset.orig||first?.getAttribute("src");
+    const h=c.querySelector("h3");
+    if(!src||!h)return;
+
+    const row=document.createElement("div");
+    row.className="row";
+    row.style.marginBottom="8px";
+
+    const mk2=(text,fn)=>{
+      const b=document.createElement("button");
+      b.textContent=text;b.style.fontSize="12px";
+      b.onclick=async()=>{
+        try{await fn()}catch(err){say("Failed: "+err.message)}
+      };
+      row.append(b);
+    };
+
     mk2("Rename",async()=>{
-      const nt=(prompt("New title:",h.textContent)||"").trim().replace(/\s+/g," "); if(!nt||nt==h.textContent)return;
-      say("Renaming..."); await mutate(map,t=>retitle(t,src,nt,h.textContent),"Rename lineup");
-      const a=cached(map,src); if(a)a.querySelector("h3").textContent=nt; render();
-      say("Renamed and saved. The live site updates in about a minute; it is already shown here.");
+      const nt=normalizeTitle(
+        prompt("New title:",h.textContent)||""
+      );
+      if(!nt||nt===h.textContent)return;
+
+      say("Renaming...");
+      await mutate(
+        st.map,
+        t=>retitle(t,src,nt,h.textContent),
+        "Rename lineup"
+      );
+      render();
+      say("Renamed and saved.");
     });
+
     mk2("Delete",async()=>{
       const title=h.textContent;
-      if(!confirm('Delete "'+title+'" and its image files from the repository?'))return;
-      say("Deleting..."); let n=0;
+      if(!confirm('Delete "'+title+
+          '" and its image files from the repository?'))return;
+
+      say("Deleting...");
       await commit("Delete lineup: "+title,async ctx=>{
-        const p=`maps/${map}.html`,t=await ctx.read(p),del=[],dirs={};
-        for(const f of ownImgs(t,src,title)){const d=f.slice(0,f.lastIndexOf("/"));dirs[d]=dirs[d]||await ctx.files(d);if(dirs[d].has(f.slice(d.length+1)))del.push(f)}
-        n=del.length;return {write:{[p]:{text:dropAt(t,src,title)}},del}});
-      cached(map,src)?.remove(); render();
-      say(`Deleted. ${n} image file(s) removed from the repository. The live site updates in about a minute.`);
+        const p="maps/"+st.map+".html";
+        const t=await ctx.read(p);
+        const del=ownImgs(t,src,title);
+        return {write:{[p]:{text:dropAt(t,src,title)}},del};
+      });
+
+      render();
+      say("Deleted.");
     });
-    const half=(e,el,vert)=>{const r=el.getBoundingClientRect();return vert?e.clientY<r.top+r.height/2:e.clientX<r.left+r.width/2};
-    const saved=()=>say("Order saved. The live site updates in about a minute; it is already shown here.");
-    // Reorder whole lineups (up/down): drag the "Move" handle onto another lineup
-    const hd=document.createElement("span");hd.className="handle";hd.textContent="\u283F Move";hd.title="Drag to reorder this lineup";hd.draggable=true;
-    hd.ondragstart=e=>{drag={k:"art",c,src,title:h.textContent};e.dataTransfer.effectAllowed="move";e.dataTransfer.setData("text/plain","lineup");e.dataTransfer.setDragImage(h,10,10);c.classList.add("dragging")};
-    hd.ondragend=()=>{drag=null;c.classList.remove("dragging");clearMarks()};
+
+    const halfVertical=(e,el)=>{
+      const r=el.getBoundingClientRect();
+      return e.clientY<r.top+r.height/2;
+    };
+    const halfHorizontal=(e,el)=>{
+      const r=el.getBoundingClientRect();
+      return e.clientX<r.left+r.width/2;
+    };
+
+    const hd=document.createElement("span");
+    hd.className="handle";hd.textContent="⠿ Move";
+    hd.title="Drag to reorder this lineup";hd.draggable=true;
+
+    hd.ondragstart=e=>{
+      drag={k:"art",c,src,title:h.textContent};
+      e.dataTransfer.effectAllowed="move";
+      e.dataTransfer.setData("text/plain","lineup");
+      c.classList.add("dragging");
+    };
+    hd.ondragend=()=>{
+      drag=null;c.classList.remove("dragging");
+      clearMarks();
+    };
     row.prepend(hd);
+    h.after(row);
+
     c.addEventListener("dragover",e=>{
-      if(!drag||drag.k!="art"||drag.c===c)return;
-      e.preventDefault();clearMarks();c.classList.add(half(e,c,true)?"drop-before":"drop-after");
+      if(!drag||drag.k!=="art"||drag.c===c)return;
+      e.preventDefault();clearMarks();
+      c.classList.add(halfVertical(e,c)?"drop-before":"drop-after");
     });
+
     c.addEventListener("drop",async e=>{
-      if(!drag||drag.k!="art"||drag.c===c)return;
+      if(!drag||drag.k!=="art"||drag.c===c)return;
       e.preventDefault();e.stopPropagation();
-      const d=drag,before=half(e,c,true);drag=null;clearMarks();
+
+      const d=drag,before=halfVertical(e,c);
+      drag=null;clearMarks();
+
       try{
         say("Saving new order...");
-        await mutate(map,t=>moveArt(t,d.src,d.title,src,h.textContent,before),"Reorder lineups");
-        const A=cached(map,d.src),B=cached(map,src); if(A&&B)before?B.before(A):B.after(A);
-        keepY=scrollY;render();saved();
+        await mutate(
+          st.map,
+          t=>moveArt(t,d.src,d.title,src,h.textContent,before),
+          "Reorder lineups"
+        );
+        keepY=scrollY;render();say("Order saved.");
       }catch(err){say("Failed: "+err.message)}
     });
-    // Reorder images inside a lineup (left/right): drag an image onto another image of the same lineup
+
     const imgs=[...c.querySelectorAll("img")];
     imgs.forEach((im,i)=>{
       im.draggable=true;
-      im.addEventListener("dragstart",e=>{drag={k:"img",c,i};e.dataTransfer.effectAllowed="move";e.dataTransfer.setData("text/plain","image");im.classList.add("dragging")});
-      im.addEventListener("dragend",()=>{drag=null;im.classList.remove("dragging");clearMarks()});
+      im.addEventListener("dragstart",e=>{
+        drag={k:"img",c,i};
+        e.dataTransfer.effectAllowed="move";
+        e.dataTransfer.setData("text/plain","image");
+        im.classList.add("dragging");
+      });
+      im.addEventListener("dragend",()=>{
+        drag=null;im.classList.remove("dragging");clearMarks();
+      });
       im.addEventListener("dragover",e=>{
-        if(!drag||drag.k!="img"||drag.c!==c||drag.i==i)return;
-        e.preventDefault();clearMarks();im.classList.add(half(e,im,false)?"drop-before":"drop-after");
+        if(!drag||drag.k!=="img"||drag.c!==c||drag.i===i)return;
+        e.preventDefault();clearMarks();
+        im.classList.add(
+          halfHorizontal(e,im)?"drop-before":"drop-after"
+        );
       });
       im.addEventListener("drop",async e=>{
-        if(!drag||drag.k!="img"||drag.c!==c||drag.i==i)return;
+        if(!drag||drag.k!=="img"||drag.c!==c||drag.i===i)return;
         e.preventDefault();e.stopPropagation();
-        const from=drag.i,before=half(e,im,false);drag=null;clearMarks();
-        let to=i>from?i-1:i; if(!before)to++;
-        if(to==from)return;
+
+        const from=drag.i;
+        const before=halfHorizontal(e,im);
+        drag=null;clearMarks();
+
+        let to=i>from?i-1:i;
+        if(!before)to++;
+        if(to===from)return;
+
         try{
           say("Saving new order...");
-          await mutate(map,t=>moveImg(t,src,h.textContent,from,to,imgs.length),"Reorder images");
-          const a=cached(map,src);
-          if(a){const L=[...a.querySelectorAll("img")];before?L[i].before(L[from]):L[i].after(L[from])}
-          keepY=scrollY;render();saved();
+          await mutate(
+            st.map,
+            t=>moveImg(t,src,h.textContent,from,to,imgs.length),
+            "Reorder images"
+          );
+          keepY=scrollY;render();say("Order saved.");
         }catch(err){say("Failed: "+err.message)}
       });
     });
-    h.after(row);
   };
+
+  function clearMarks(){
+    document.querySelectorAll(".drop-before,.drop-after")
+      .forEach(x=>x.classList.remove("drop-before","drop-after"));
+  }
 }
 
-// ---- Hover preview: rest the cursor on a lineup image to see it large; move off to dismiss. Off in edit mode. ----
-const HV_DELAY=250, HV_SWITCH=80, HV_GRACE=40, HV_QUIET=200;   // ms: first show / switching between images / flicker guard / quiet time after scrolling
-const hv=$("#hv"), hvImg=hv.querySelector("img");
-let hvT=null, hvOn=false, hvCur=null, hvQuiet=0;
-function hvOff(){clearTimeout(hvT);hvT=null;hvCur=null;if(hvOn){hvOn=false;hv.classList.remove("on")}}
-const hvBlocked=()=>!lb.hidden||(typeof EDIT!=="undefined"&&EDIT)||Date.now()<hvQuiet||(window.matchMedia&&!matchMedia("(hover: hover)").matches);
-const hvTarget=e=>e.target.closest?e.target.closest("#out .shots img"):null;
-document.addEventListener("mouseover",e=>{
-  const i=hvTarget(e); if(!i||i===hvCur)return;
-  hvCur=i; clearTimeout(hvT);
-  hvT=setTimeout(()=>{if(hvCur!==i||hvBlocked())return;hvImg.src=i.currentSrc||i.src;hvOn=true;hv.classList.add("on")},hvOn?HV_SWITCH:HV_DELAY);
-});
-document.addEventListener("mouseout",e=>{if(!hvTarget(e))return;hvCur=null;clearTimeout(hvT);hvT=setTimeout(hvOff,HV_GRACE)});
-document.addEventListener("mousedown",hvOff,true);
-addEventListener("scroll",()=>{hvQuiet=Date.now()+HV_QUIET;hvOff()},{passive:true});
-addEventListener("blur",hvOff);
-addEventListener("keydown",e=>{if(e.key=="Escape")hvOff()});
+/* Compact header: after the first scroll, navigation gives a little more
+   vertical room to the actual lineup image. */
+let compactTick=false;
+function syncHeader(){
+  document.body.classList.toggle("compact-header",window.scrollY>56);
+}
+addEventListener("scroll",()=>{
+  if(compactTick)return;
+  compactTick=true;
+  requestAnimationFrame(()=>{
+    compactTick=false;
+    syncHeader();
+  });
+},{passive:true});
+syncHeader();
 
 addEventListener("hashchange",render);
-if(!location.hash){try{const l=localStorage.getItem("nades-last");if(l)history.replaceState(null,"",l)}catch(e){}}
+
+if(!location.hash){
+  try{
+    const l=localStorage.getItem("nades-last");
+    if(l)history.replaceState(null,"",l);
+  }catch(e){}
+}
 render();
 </script>
-</body></html>
+</body>
+</html>
