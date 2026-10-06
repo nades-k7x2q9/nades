@@ -248,6 +248,21 @@ const $=s=>document.querySelector(s);
 const docs={};
 const ids=a=>a.map(x=>x[0]);
 
+/* The GitHub branch is the canonical data source for both normal and edit
+   views. GitHub Pages only serves the app shell, so a Pages deployment delay
+   cannot leave the normal view reading older map data than edit mode. */
+const REPO_OWNER="nades-k7x2q9";
+const REPO_NAME="nades";
+const REPO_BRANCH="main";
+const RAW_ROOT=
+  "https://raw.githubusercontent.com/"+REPO_OWNER+"/"+REPO_NAME+
+  "/"+REPO_BRANCH+"/";
+const parseDoc=t=>new DOMParser().parseFromString(t,"text/html");
+const repoAsset=p=>{
+  if(!p||/^(?:https?:|blob:|data:)/i.test(p))return p;
+  return RAW_ROOT+p.replace(/^\.?\//,"");
+};
+
 let st={map:"mirage",side:"t",loc:"instant"};
 let tok=0,group=[],gi=0,keepY=null,local={};
 
@@ -272,9 +287,18 @@ function parse(){
   if(ids(LOCS).includes(l))st.loc=l;
 }
 async function load(m){
-  const r=await fetch("maps/"+m+".html",{cache:"no-cache"});
+  const remote=RAW_ROOT+"maps/"+m+".html?v="+Date.now();
+
+  try{
+    const r=await fetch(remote,{cache:"no-store"});
+    if(r.ok)return parseDoc(await r.text());
+  }catch(e){}
+
+  /* Fallback keeps local/offline development working if raw GitHub is
+     temporarily unavailable. */
+  const r=await fetch("maps/"+m+".html",{cache:"no-store"});
   if(!r.ok)throw 0;
-  return new DOMParser().parseFromString(await r.text(),"text/html");
+  return parseDoc(await r.text());
 }
 function note(t){
   const p=document.createElement("p");p.className="msg";p.textContent=t;return p;
@@ -300,6 +324,17 @@ const tagsOf=title=>{
     spawn:m?+m[1]:null,
     area:left.replace(/\s*\bSpawn\s+\d+\b.*$/i,"").trim()
   };
+};
+
+const instantOrder=(info,index=0)=>{
+  if(info.ov)return [-1,index];
+  if(info.spawn!==null)return [info.spawn,index];
+  return [Number.MAX_SAFE_INTEGER,index];
+};
+const compareInstant=(a,b)=>{
+  const [ar,ai]=instantOrder(a.info,a.index);
+  const [br,bi]=instantOrder(b.info,b.index);
+  return ar-br||ai-bi;
 };
 const titleForUi=t=>normalizeTitle(t);
 function formatLineupTitle(h){
@@ -434,10 +469,12 @@ async function render(){
     return;
   }
 
-  const items=arts.map(a=>({
+  const items=arts.map((a,index)=>({
     a,
-    info:tagsOf(a.querySelector("h3")?.textContent||"")
+    info:tagsOf(a.querySelector("h3")?.textContent||""),
+    index
   }));
+  if(st.loc==="instant")items.sort(compareInstant);
 
   const spawns=[...new Set(
     items.map(x=>x.info.spawn).filter(n=>n!==null)
@@ -483,7 +520,10 @@ async function render(){
         oi.loading="eager";
         const p=oi.getAttribute("src");
         oi.dataset.orig=p;
-        if(local[p])oi.src=local[p];
+        oi.src=local[p]||repoAsset(p);
+        oi.onerror=()=>{
+          if(!local[p]&&oi.getAttribute("src")!==p)oi.src=p;
+        };
         oi.alt=ot.textContent;
         overviewBox.append(ot,oi);
         if(window.addOverviewEdit)addOverviewEdit(overviewBox,overview.a);
@@ -539,7 +579,10 @@ async function render(){
       const p=i.getAttribute("src");
       i.dataset.orig=p;
       const u=local[p];
-      if(u)i.src=u;
+      i.src=u||repoAsset(p);
+      i.onerror=()=>{
+        if(!u&&i.getAttribute("src")!==p)i.src=p;
+      };
     });
 
     if(window.addDel)addDel(c);
@@ -582,12 +625,25 @@ const MAXW=1600;
 if(EDIT){
   document.documentElement.classList.add("edit-mode");
   document.body.classList.add("edit-mode");
-  const R=location.hostname.split(".")[0]+"/"+location.pathname.split("/")[1];
+  const R=REPO_OWNER+"/"+REPO_NAME;
   const label=s=>[MAPS,SIDES,LOCS]
     .map((a,i)=>a.find(x=>x[0]===s[["map","side","loc"][i]])?.[1]||s)
     .join(" / ");
 
   let pending=[],dest=null,drag=null,br=null;
+  let writeQueue=Promise.resolve();
+  const renameVersion=new Map();
+  const mapEditVersion=new Map();
+
+  const nextMapEditVersion=map=>{
+    const v=(mapEditVersion.get(map)||0)+1;
+    mapEditVersion.set(map,v);
+    return v;
+  };
+  const isCurrentMapEdit=(map,v)=>mapEditVersion.get(map)===v;
+  const syncCommittedDoc=(map,text,v)=>{
+    if(text!=null&&isCurrentMapEdit(map,v))docs[map]=parseDoc(text);
+  };
   let dragScrollRaf=0,dragScrollDir=0;
 
   const stopDragScroll=()=>{
@@ -633,7 +689,9 @@ if(EDIT){
   const say=m=>$("#dh").textContent=m;
   const idle=()=>say(
     'Edit mode: drop or paste images to add a lineup to '+label(st)+
-    '. Drag "Move" to reorder lineups, or drag an image to reorder within its lineup.'
+    (st.loc==="instant"
+      ? '. Instant lineups are automatically sorted by Spawn number. Drag images to reorder within a lineup.'
+      : '. Drag "Move" to reorder lineups, or drag an image to reorder within its lineup.')
   );
   idle();
 
@@ -702,6 +760,34 @@ ${names.map(n=>`    <img src="img/${map}/${n}">`).join("\n")}
     const e=o<0?-1:t.indexOf("</section>",o);
     if(e<0)throw new Error("Section not found in map file");
     return t.slice(0,e)+art+t.slice(e);
+  };
+
+  const sortInstantSection=(t,side)=>{
+    const marker='<section data-side="'+side+'" data-loc="instant">';
+    const o=t.indexOf(marker);
+    if(o<0)return t;
+
+    const a=o+marker.length;
+    const z=t.indexOf("</section>",a);
+    if(z<0)throw new Error("Instant section not found in map file");
+
+    const body=t.slice(a,z);
+    const blocks=[...body.matchAll(/<article\b[\s\S]*?<\/article>/gi)]
+      .map((m,index)=>{
+        const hm=/<h3[^>]*>([\s\S]*?)<\/h3>/i.exec(m[0]);
+        const title=(hm?.[1]||"").replace(/<[^>]+>/g,"");
+        return {html:m[0],info:tagsOf(title),index};
+      });
+
+    if(blocks.length<2)return t;
+
+    blocks.sort(compareInstant);
+    let i=0;
+    const sortedBody=body.replace(
+      /<article\b[\s\S]*?<\/article>/gi,
+      ()=>blocks[i++].html
+    );
+    return t.slice(0,a)+sortedBody+t.slice(z);
   };
 
   const rx=s=>s.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
@@ -789,7 +875,7 @@ ${names.map(n=>`    <img src="img/${map}/${n}">`).join("\n")}
       .filter(p=>/^img\/[^?#]+$/.test(p)&&!p.includes("..")&&!keep.has(p));
   };
 
-  async function commit(msg,plan){
+  async function commitNow(msg,plan){
     const blobs={};
 
     for(let attempt=0;attempt<3;attempt++){
@@ -860,11 +946,25 @@ ${names.map(n=>`    <img src="img/${map}/${n}">`).join("\n")}
     }
   }
 
-  const mutate=(map,fn,msg)=>commit(msg,async ctx=>{
-    const p="maps/"+map+".html";
-    const old=await ctx.read(p),next=fn(old);
-    return next===old?{}:{write:{[p]:{text:next}}};
-  });
+  const commit=(msg,plan)=>{
+    const run=()=>commitNow(msg,plan);
+    const job=writeQueue.then(run,run);
+    writeQueue=job.catch(()=>{});
+    return job;
+  };
+
+  const mutate=async(map,fn,msg)=>{
+    let committedText=null;
+
+    await commit(msg,async ctx=>{
+      const p="maps/"+map+".html";
+      const old=await ctx.read(p),next=fn(old);
+      committedText=next;
+      return next===old?{}:{write:{[p]:{text:next}}};
+    });
+
+    return committedText;
+  };
 
   const cachedArticle=(map,src,title)=>{
     const doc=docs[map];
@@ -883,11 +983,38 @@ ${names.map(n=>`    <img src="img/${map}/${n}">`).join("\n")}
     })||null;
   };
 
+  const renameKey=(map,src)=>map+"|"+normPath(src||"");
+  const nextRenameVersion=(map,src)=>{
+    const key=renameKey(map,src);
+    const v=(renameVersion.get(key)||0)+1;
+    renameVersion.set(key,v);
+    return [key,v];
+  };
+
   const cacheRename=(map,src,oldTitle,newTitle)=>{
     const a=cachedArticle(map,src,oldTitle);
     const h=a?.querySelector("h3");
     if(!h)return false;
     h.textContent=normalizeTitle(newTitle);
+    return true;
+  };
+
+  const cacheSortInstant=(map,side)=>{
+    const sec=docs[map]?.querySelector(
+      'section[data-side="'+side+'"][data-loc="instant"]'
+    );
+    if(!sec)return false;
+
+    const arts=[...sec.children]
+      .filter(x=>x.tagName==="ARTICLE")
+      .map((a,index)=>({
+        a,
+        info:tagsOf(a.querySelector("h3")?.textContent||""),
+        index
+      }))
+      .sort(compareInstant);
+
+    arts.forEach(x=>sec.append(x.a));
     return true;
   };
 
@@ -1030,7 +1157,9 @@ ${names.map(n=>`    <img src="img/${map}/${n}">`).join("\n")}
       const mp="maps/"+map+".html";
 
       await commit("Add lineup: "+title,async ctx=>{
-        write[mp]={text:addTo(await ctx.read(mp),side,loc,art)};
+        let next=addTo(await ctx.read(mp),side,loc,art);
+        if(loc==="instant")next=sortInstantSection(next,side);
+        write[mp]={text:next};
         return {write};
       });
 
@@ -1043,6 +1172,7 @@ ${names.map(n=>`    <img src="img/${map}/${n}">`).join("\n")}
           const tp=document.createElement("template");
           tp.innerHTML=art;
           sec.append(tp.content.firstElementChild);
+          if(loc==="instant")cacheSortInstant(map,side);
         }
       }
 
@@ -1078,22 +1208,32 @@ ${names.map(n=>`    <img src="img/${map}/${n}">`).join("\n")}
       const nt=normalizeTitle(prompt("New title:",title)||"");
       if(!nt||nt===title)return;
 
-      const map=st.map;
+      const map=st.map,side=st.side,loc=st.loc;
+      const [rkey,rver]=nextRenameVersion(map,src);
+      const mver=nextMapEditVersion(map);
+
       if(!cacheRename(map,src,title,nt))
         return say("Failed: lineup not found in local view.");
+      if(loc==="instant")cacheSortInstant(map,side);
 
       showCachedNow();
       say("Saving rename...");
 
       try{
-        await mutate(
+        const committed=await mutate(
           map,
-          t=>retitle(t,src,nt,title),
+          t=>{
+            const next=retitle(t,src,nt,title);
+            return loc==="instant"?sortInstantSection(next,side):next;
+          },
           "Rename lineup"
         );
-        say("Renamed and saved.");
+        syncCommittedDoc(map,committed,mver);
+        if(renameVersion.get(rkey)===rver&&isCurrentMapEdit(map,mver))
+          say("Renamed and saved.");
       }catch(err){
-        await rollbackCached(map);
+        if(renameVersion.get(rkey)===rver&&isCurrentMapEdit(map,mver))
+          await rollbackCached(map);
         throw err;
       }
     });
@@ -1144,22 +1284,32 @@ ${names.map(n=>`    <img src="img/${map}/${n}">`).join("\n")}
       );
       if(!nt||nt===oldTitle)return;
 
-      const map=st.map;
+      const map=st.map,side=st.side,loc=st.loc;
+      const [rkey,rver]=nextRenameVersion(map,src);
+      const mver=nextMapEditVersion(map);
+
       if(!cacheRename(map,src,oldTitle,nt))
         return say("Failed: lineup not found in local view.");
+      if(loc==="instant")cacheSortInstant(map,side);
 
       showCachedNow();
       say("Saving rename...");
 
       try{
-        await mutate(
+        const committed=await mutate(
           map,
-          t=>retitle(t,src,nt,oldTitle),
+          t=>{
+            const next=retitle(t,src,nt,oldTitle);
+            return loc==="instant"?sortInstantSection(next,side):next;
+          },
           "Rename lineup"
         );
-        say("Renamed and saved.");
+        syncCommittedDoc(map,committed,mver);
+        if(renameVersion.get(rkey)===rver&&isCurrentMapEdit(map,mver))
+          say("Renamed and saved.");
       }catch(err){
-        await rollbackCached(map);
+        if(renameVersion.get(rkey)===rver&&isCurrentMapEdit(map,mver))
+          await rollbackCached(map);
         throw err;
       }
     });
@@ -1191,57 +1341,62 @@ ${names.map(n=>`    <img src="img/${map}/${n}">`).join("\n")}
       return e.clientX<r.left+r.width/2;
     };
 
-    const hd=document.createElement("span");
-    hd.className="handle";hd.textContent="⠿ Move";
-    hd.title="Drag to reorder this lineup";hd.draggable=true;
-
-    hd.ondragstart=e=>{
-      drag={k:"art",c,src,title:h.textContent};
-      e.dataTransfer.effectAllowed="move";
-      e.dataTransfer.setData("text/plain","lineup");
-      c.classList.add("dragging");
-    };
-    hd.ondragend=()=>{
-      drag=null;c.classList.remove("dragging");
-      stopDragScroll();clearMarks();
-    };
-    row.prepend(hd);
     h.after(row);
 
-    c.addEventListener("dragover",e=>{
-      if(!drag||drag.k!=="art"||drag.c===c)return;
-      e.preventDefault();clearMarks();
-      c.classList.add(halfVertical(e,c)?"drop-before":"drop-after");
-    });
+    if(st.loc!=="instant"){
+      const hd=document.createElement("span");
+      hd.className="handle";hd.textContent="⠿ Move";
+      hd.title="Drag to reorder this lineup";hd.draggable=true;
 
-    c.addEventListener("drop",async e=>{
-      if(!drag||drag.k!=="art"||drag.c===c)return;
-      e.preventDefault();e.stopPropagation();
+      hd.ondragstart=e=>{
+        drag={k:"art",c,src,title:h.textContent};
+        e.dataTransfer.effectAllowed="move";
+        e.dataTransfer.setData("text/plain","lineup");
+        c.classList.add("dragging");
+      };
+      hd.ondragend=()=>{
+        drag=null;c.classList.remove("dragging");
+        stopDragScroll();clearMarks();
+      };
+      row.prepend(hd);
 
-      const d=drag,before=halfVertical(e,c);
-      drag=null;stopDragScroll();clearMarks();
+      c.addEventListener("dragover",e=>{
+        if(!drag||drag.k!=="art"||drag.c===c)return;
+        e.preventDefault();clearMarks();
+        c.classList.add(halfVertical(e,c)?"drop-before":"drop-after");
+      });
 
-      const map=st.map;
-      const targetTitle=h.textContent;
+      c.addEventListener("drop",async e=>{
+        if(!drag||drag.k!=="art"||drag.c===c)return;
+        e.preventDefault();e.stopPropagation();
 
-      if(!cacheMoveArt(map,d.src,d.title,src,targetTitle,before))
-        return say("Failed: lineup order could not be updated locally.");
+        const d=drag,before=halfVertical(e,c);
+        drag=null;stopDragScroll();clearMarks();
 
-      showCachedNow();
-      say("Saving new order...");
+        const map=st.map;
+        const targetTitle=h.textContent;
+        const mver=nextMapEditVersion(map);
 
-      try{
-        await mutate(
-          map,
-          t=>moveArt(t,d.src,d.title,src,targetTitle,before),
-          "Reorder lineups"
-        );
-        say("Order saved.");
-      }catch(err){
-        await rollbackCached(map);
-        say("Failed: "+err.message);
-      }
-    });
+        if(!cacheMoveArt(map,d.src,d.title,src,targetTitle,before))
+          return say("Failed: lineup order could not be updated locally.");
+
+        showCachedNow();
+        say("Saving new order...");
+
+        try{
+          const committed=await mutate(
+            map,
+            t=>moveArt(t,d.src,d.title,src,targetTitle,before),
+            "Reorder lineups"
+          );
+          syncCommittedDoc(map,committed,mver);
+          if(isCurrentMapEdit(map,mver))say("Order saved.");
+        }catch(err){
+          if(isCurrentMapEdit(map,mver))await rollbackCached(map);
+          say("Failed: "+err.message);
+        }
+      });
+    }
 
     const imgs=[...c.querySelectorAll("img")];
     imgs.forEach((im,i)=>{
@@ -1276,6 +1431,7 @@ ${names.map(n=>`    <img src="img/${map}/${n}">`).join("\n")}
 
         const map=st.map;
         const title=h.textContent;
+        const mver=nextMapEditVersion(map);
 
         if(!cacheMoveImg(map,src,title,from,to))
           return say("Failed: image order could not be updated locally.");
@@ -1284,14 +1440,15 @@ ${names.map(n=>`    <img src="img/${map}/${n}">`).join("\n")}
         say("Saving new order...");
 
         try{
-          await mutate(
+          const committed=await mutate(
             map,
             t=>moveImg(t,src,title,from,to,imgs.length),
             "Reorder images"
           );
-          say("Order saved.");
+          syncCommittedDoc(map,committed,mver);
+          if(isCurrentMapEdit(map,mver))say("Order saved.");
         }catch(err){
-          await rollbackCached(map);
+          if(isCurrentMapEdit(map,mver))await rollbackCached(map);
           say("Failed: "+err.message);
         }
       });
