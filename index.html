@@ -1106,6 +1106,37 @@ ${names.map(n=>`    <img src="img/${map}/${n}">`).join("\n")}
 
     const imgs=[...c.querySelectorAll("img")];
     imgs.forEach((im,i)=>{
+      const controls=document.createElement("div");
+      controls.className="row";
+      controls.style.marginBottom="6px";
+
+      const moveButton=(text,to,disabled)=>{
+        const b=document.createElement("button");
+        b.textContent=text;
+        b.style.fontSize="12px";
+        b.disabled=disabled;
+        b.onclick=async e=>{
+          e.stopPropagation();
+          if(disabled)return;
+
+          try{
+            say("Saving new order...");
+            keepY=scrollY;
+            await mutate(
+              st.map,
+              t=>moveImg(t,src,h.textContent,i,to,imgs.length),
+              "Reorder images"
+            );
+            render();say("Order saved.");
+          }catch(err){say("Failed: "+err.message)}
+        };
+        controls.append(b);
+      };
+
+      moveButton("↑ Move up",i-1,i===0);
+      moveButton("↓ Move down",i+1,i===imgs.length-1);
+      im.before(controls);
+
       im.draggable=true;
       im.addEventListener("dragstart",e=>{
         drag={k:"img",c,i};
