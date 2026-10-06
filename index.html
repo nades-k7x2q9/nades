@@ -588,6 +588,46 @@ if(EDIT){
     .join(" / ");
 
   let pending=[],dest=null,drag=null,br=null;
+  let dragScrollRaf=0,dragScrollDir=0;
+
+  const stopDragScroll=()=>{
+    dragScrollDir=0;
+    if(dragScrollRaf){
+      cancelAnimationFrame(dragScrollRaf);
+      dragScrollRaf=0;
+    }
+  };
+
+  const runDragScroll=()=>{
+    if(!dragScrollDir){
+      dragScrollRaf=0;
+      return;
+    }
+    window.scrollBy(0,dragScrollDir*14);
+    dragScrollRaf=requestAnimationFrame(runDragScroll);
+  };
+
+  const updateDragScroll=e=>{
+    if(!drag){
+      stopDragScroll();
+      return;
+    }
+
+    const edge=Math.min(140,Math.max(80,window.innerHeight*.12));
+    let dir=0;
+
+    if(e.clientY<edge){
+      const strength=(edge-e.clientY)/edge;
+      dir=-(0.35+strength*.65);
+    }else if(e.clientY>window.innerHeight-edge){
+      const strength=(e.clientY-(window.innerHeight-edge))/edge;
+      dir=0.35+strength*.65;
+    }
+
+    dragScrollDir=dir;
+    if(dir&&!dragScrollRaf)dragScrollRaf=requestAnimationFrame(runDragScroll);
+    if(!dir)stopDragScroll();
+  };
 
   $("#draft").hidden=false;
   const say=m=>$("#dh").textContent=m;
@@ -871,9 +911,13 @@ ${names.map(n=>`    <img src="img/${map}/${n}">`).join("\n")}
     return true;
   };
 
-  addEventListener("dragover",e=>e.preventDefault());
+  addEventListener("dragover",e=>{
+    e.preventDefault();
+    updateDragScroll(e);
+  });
   addEventListener("drop",e=>{
     e.preventDefault();
+    stopDragScroll();
     addFiles([...e.dataTransfer.files]);
   });
   addEventListener("paste",e=>{
@@ -1075,7 +1119,7 @@ ${names.map(n=>`    <img src="img/${map}/${n}">`).join("\n")}
     };
     hd.ondragend=()=>{
       drag=null;c.classList.remove("dragging");
-      clearMarks();
+      stopDragScroll();clearMarks();
     };
     row.prepend(hd);
     h.after(row);
@@ -1091,7 +1135,7 @@ ${names.map(n=>`    <img src="img/${map}/${n}">`).join("\n")}
       e.preventDefault();e.stopPropagation();
 
       const d=drag,before=halfVertical(e,c);
-      drag=null;clearMarks();
+      drag=null;stopDragScroll();clearMarks();
 
       try{
         say("Saving new order...");
@@ -1106,37 +1150,6 @@ ${names.map(n=>`    <img src="img/${map}/${n}">`).join("\n")}
 
     const imgs=[...c.querySelectorAll("img")];
     imgs.forEach((im,i)=>{
-      const controls=document.createElement("div");
-      controls.className="row";
-      controls.style.marginBottom="6px";
-
-      const moveButton=(text,to,disabled)=>{
-        const b=document.createElement("button");
-        b.textContent=text;
-        b.style.fontSize="12px";
-        b.disabled=disabled;
-        b.onclick=async e=>{
-          e.stopPropagation();
-          if(disabled)return;
-
-          try{
-            say("Saving new order...");
-            keepY=scrollY;
-            await mutate(
-              st.map,
-              t=>moveImg(t,src,h.textContent,i,to,imgs.length),
-              "Reorder images"
-            );
-            render();say("Order saved.");
-          }catch(err){say("Failed: "+err.message)}
-        };
-        controls.append(b);
-      };
-
-      moveButton("↑ Move up",i-1,i===0);
-      moveButton("↓ Move down",i+1,i===imgs.length-1);
-      im.before(controls);
-
       im.draggable=true;
       im.addEventListener("dragstart",e=>{
         drag={k:"img",c,i};
@@ -1145,7 +1158,7 @@ ${names.map(n=>`    <img src="img/${map}/${n}">`).join("\n")}
         im.classList.add("dragging");
       });
       im.addEventListener("dragend",()=>{
-        drag=null;im.classList.remove("dragging");clearMarks();
+        drag=null;im.classList.remove("dragging");stopDragScroll();clearMarks();
       });
       im.addEventListener("dragover",e=>{
         if(!drag||drag.k!=="img"||drag.c!==c||drag.i===i)return;
