@@ -913,7 +913,7 @@ ${names.map(n=>`    <img src="img/${map}/${n}">`).join("\n")}
         say("Preparing image "+(i+1)+" of "+pending.length+"...");
         const n=side+"-"+loc+"-"+slug+"-"+id+"-"+(i+1)+".jpg";
         const p="img/"+map+"/"+n;
-        const o=await shrink(p);
+        const o=await shrink(pending[i]);
         write[p]={b64:o.b64};
         urls[p]=o.url;
         names.push(n);
