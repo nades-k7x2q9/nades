@@ -866,6 +866,69 @@ ${names.map(n=>`    <img src="img/${map}/${n}">`).join("\n")}
     return next===old?{}:{write:{[p]:{text:next}}};
   });
 
+  const cachedArticle=(map,src,title)=>{
+    const doc=docs[map];
+    if(!doc)return null;
+
+    const wantedSrc=src?normPath(src):"";
+    const wantedTitle=normalizeTitle(title||"");
+
+    return [...doc.querySelectorAll("article")].find(a=>{
+      if(wantedSrc&&[...a.querySelectorAll("img")].some(
+        i=>normPath(i.getAttribute("src")||"")===wantedSrc
+      ))return true;
+
+      const h=a.querySelector("h3");
+      return wantedTitle&&h&&normalizeTitle(h.textContent||"")===wantedTitle;
+    })||null;
+  };
+
+  const cacheRename=(map,src,oldTitle,newTitle)=>{
+    const a=cachedArticle(map,src,oldTitle);
+    const h=a?.querySelector("h3");
+    if(!h)return false;
+    h.textContent=normalizeTitle(newTitle);
+    return true;
+  };
+
+  const cacheMoveArt=(map,sa,ta,sb,tb,before)=>{
+    const a=cachedArticle(map,sa,ta);
+    const b=cachedArticle(map,sb,tb);
+    if(!a||!b||a===b||a.parentNode!==b.parentNode)return false;
+
+    const parent=b.parentNode;
+    parent.insertBefore(a,before?b:b.nextSibling);
+    return true;
+  };
+
+  const cacheMoveImg=(map,src,title,from,to)=>{
+    const a=cachedArticle(map,src,title);
+    if(!a)return false;
+
+    const imgs=[...a.querySelectorAll("img")];
+    if(from<0||from>=imgs.length||to<0||to>=imgs.length||from===to)return false;
+
+    const moving=imgs[from];
+    const parent=moving.parentNode;
+    moving.remove();
+
+    const remaining=[...parent.querySelectorAll("img")];
+    if(to>=remaining.length)parent.append(moving);
+    else parent.insertBefore(moving,remaining[to]);
+    return true;
+  };
+
+  const showCachedNow=()=>{
+    keepY=scrollY;
+    render();
+  };
+
+  const rollbackCached=async map=>{
+    delete docs[map];
+    keepY=scrollY;
+    await render();
+  };
+
   async function shrink(f){
     const bm=await createImageBitmap(f);
     const k=Math.min(1,MAXW/bm.width);
@@ -1015,15 +1078,24 @@ ${names.map(n=>`    <img src="img/${map}/${n}">`).join("\n")}
       const nt=normalizeTitle(prompt("New title:",title)||"");
       if(!nt||nt===title)return;
 
-      say("Renaming...");
-      await mutate(
-        st.map,
-        t=>retitle(t,src,nt,title),
-        "Rename lineup"
-      );
-      delete docs[st.map];
-      await render();
-      say("Renamed and saved.");
+      const map=st.map;
+      if(!cacheRename(map,src,title,nt))
+        return say("Failed: lineup not found in local view.");
+
+      showCachedNow();
+      say("Saving rename...");
+
+      try{
+        await mutate(
+          map,
+          t=>retitle(t,src,nt,title),
+          "Rename lineup"
+        );
+        say("Renamed and saved.");
+      }catch(err){
+        await rollbackCached(map);
+        throw err;
+      }
     });
 
     mk2("Delete",async()=>{
@@ -1066,20 +1138,30 @@ ${names.map(n=>`    <img src="img/${map}/${n}">`).join("\n")}
     };
 
     mk2("Rename",async()=>{
+      const oldTitle=h.textContent;
       const nt=normalizeTitle(
-        prompt("New title:",h.textContent)||""
+        prompt("New title:",oldTitle)||""
       );
-      if(!nt||nt===h.textContent)return;
+      if(!nt||nt===oldTitle)return;
 
-      say("Renaming...");
-      await mutate(
-        st.map,
-        t=>retitle(t,src,nt,h.textContent),
-        "Rename lineup"
-      );
-      delete docs[st.map];
-      render();
-      say("Renamed and saved.");
+      const map=st.map;
+      if(!cacheRename(map,src,oldTitle,nt))
+        return say("Failed: lineup not found in local view.");
+
+      showCachedNow();
+      say("Saving rename...");
+
+      try{
+        await mutate(
+          map,
+          t=>retitle(t,src,nt,oldTitle),
+          "Rename lineup"
+        );
+        say("Renamed and saved.");
+      }catch(err){
+        await rollbackCached(map);
+        throw err;
+      }
     });
 
     mk2("Delete",async()=>{
@@ -1139,16 +1221,26 @@ ${names.map(n=>`    <img src="img/${map}/${n}">`).join("\n")}
       const d=drag,before=halfVertical(e,c);
       drag=null;stopDragScroll();clearMarks();
 
+      const map=st.map;
+      const targetTitle=h.textContent;
+
+      if(!cacheMoveArt(map,d.src,d.title,src,targetTitle,before))
+        return say("Failed: lineup order could not be updated locally.");
+
+      showCachedNow();
+      say("Saving new order...");
+
       try{
-        say("Saving new order...");
         await mutate(
-          st.map,
-          t=>moveArt(t,d.src,d.title,src,h.textContent,before),
+          map,
+          t=>moveArt(t,d.src,d.title,src,targetTitle,before),
           "Reorder lineups"
         );
-        delete docs[st.map];
-        keepY=scrollY;render();say("Order saved.");
-      }catch(err){say("Failed: "+err.message)}
+        say("Order saved.");
+      }catch(err){
+        await rollbackCached(map);
+        say("Failed: "+err.message);
+      }
     });
 
     const imgs=[...c.querySelectorAll("img")];
@@ -1182,16 +1274,26 @@ ${names.map(n=>`    <img src="img/${map}/${n}">`).join("\n")}
         if(!before)to++;
         if(to===from)return;
 
+        const map=st.map;
+        const title=h.textContent;
+
+        if(!cacheMoveImg(map,src,title,from,to))
+          return say("Failed: image order could not be updated locally.");
+
+        showCachedNow();
+        say("Saving new order...");
+
         try{
-          say("Saving new order...");
           await mutate(
-            st.map,
-            t=>moveImg(t,src,h.textContent,from,to,imgs.length),
+            map,
+            t=>moveImg(t,src,title,from,to,imgs.length),
             "Reorder images"
           );
-          delete docs[st.map];
-          keepY=scrollY;render();say("Order saved.");
-        }catch(err){say("Failed: "+err.message)}
+          say("Order saved.");
+        }catch(err){
+          await rollbackCached(map);
+          say("Failed: "+err.message);
+        }
       });
     });
   };
