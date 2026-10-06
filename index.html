@@ -326,16 +326,6 @@ const tagsOf=title=>{
   };
 };
 
-const instantOrder=(info,index=0)=>{
-  if(info.ov)return [-1,index];
-  if(info.spawn!==null)return [info.spawn,index];
-  return [Number.MAX_SAFE_INTEGER,index];
-};
-const compareInstant=(a,b)=>{
-  const [ar,ai]=instantOrder(a.info,a.index);
-  const [br,bi]=instantOrder(b.info,b.index);
-  return ar-br||ai-bi;
-};
 const titleForUi=t=>normalizeTitle(t);
 function formatLineupTitle(h){
   const t=normalizeTitle(h.textContent||"");
@@ -469,12 +459,10 @@ async function render(){
     return;
   }
 
-  const items=arts.map((a,index)=>({
+  const items=arts.map(a=>({
     a,
-    info:tagsOf(a.querySelector("h3")?.textContent||""),
-    index
+    info:tagsOf(a.querySelector("h3")?.textContent||"")
   }));
-  if(st.loc==="instant")items.sort(compareInstant);
 
   const spawns=[...new Set(
     items.map(x=>x.info.spawn).filter(n=>n!==null)
@@ -689,9 +677,7 @@ if(EDIT){
   const say=m=>$("#dh").textContent=m;
   const idle=()=>say(
     'Edit mode: drop or paste images to add a lineup to '+label(st)+
-    (st.loc==="instant"
-      ? '. Instant lineups are automatically sorted by Spawn number. Drag images to reorder within a lineup.'
-      : '. Drag "Move" to reorder lineups, or drag an image to reorder within its lineup.')
+    '. Drag "Move" to reorder lineups, or drag an image to reorder within its lineup.'
   );
   idle();
 
@@ -762,33 +748,6 @@ ${names.map(n=>`    <img src="img/${map}/${n}">`).join("\n")}
     return t.slice(0,e)+art+t.slice(e);
   };
 
-  const sortInstantSection=(t,side)=>{
-    const marker='<section data-side="'+side+'" data-loc="instant">';
-    const o=t.indexOf(marker);
-    if(o<0)return t;
-
-    const a=o+marker.length;
-    const z=t.indexOf("</section>",a);
-    if(z<0)throw new Error("Instant section not found in map file");
-
-    const body=t.slice(a,z);
-    const blocks=[...body.matchAll(/<article\b[\s\S]*?<\/article>/gi)]
-      .map((m,index)=>{
-        const hm=/<h3[^>]*>([\s\S]*?)<\/h3>/i.exec(m[0]);
-        const title=(hm?.[1]||"").replace(/<[^>]+>/g,"");
-        return {html:m[0],info:tagsOf(title),index};
-      });
-
-    if(blocks.length<2)return t;
-
-    blocks.sort(compareInstant);
-    let i=0;
-    const sortedBody=body.replace(
-      /<article\b[\s\S]*?<\/article>/gi,
-      ()=>blocks[i++].html
-    );
-    return t.slice(0,a)+sortedBody+t.slice(z);
-  };
 
   const rx=s=>s.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
 
@@ -999,24 +958,6 @@ ${names.map(n=>`    <img src="img/${map}/${n}">`).join("\n")}
     return true;
   };
 
-  const cacheSortInstant=(map,side)=>{
-    const sec=docs[map]?.querySelector(
-      'section[data-side="'+side+'"][data-loc="instant"]'
-    );
-    if(!sec)return false;
-
-    const arts=[...sec.children]
-      .filter(x=>x.tagName==="ARTICLE")
-      .map((a,index)=>({
-        a,
-        info:tagsOf(a.querySelector("h3")?.textContent||""),
-        index
-      }))
-      .sort(compareInstant);
-
-    arts.forEach(x=>sec.append(x.a));
-    return true;
-  };
 
   const cacheMoveArt=(map,sa,ta,sb,tb,before)=>{
     const a=cachedArticle(map,sa,ta);
@@ -1157,9 +1098,7 @@ ${names.map(n=>`    <img src="img/${map}/${n}">`).join("\n")}
       const mp="maps/"+map+".html";
 
       await commit("Add lineup: "+title,async ctx=>{
-        let next=addTo(await ctx.read(mp),side,loc,art);
-        if(loc==="instant")next=sortInstantSection(next,side);
-        write[mp]={text:next};
+        write[mp]={text:addTo(await ctx.read(mp),side,loc,art)};
         return {write};
       });
 
@@ -1172,7 +1111,6 @@ ${names.map(n=>`    <img src="img/${map}/${n}">`).join("\n")}
           const tp=document.createElement("template");
           tp.innerHTML=art;
           sec.append(tp.content.firstElementChild);
-          if(loc==="instant")cacheSortInstant(map,side);
         }
       }
 
@@ -1214,7 +1152,6 @@ ${names.map(n=>`    <img src="img/${map}/${n}">`).join("\n")}
 
       if(!cacheRename(map,src,title,nt))
         return say("Failed: lineup not found in local view.");
-      if(loc==="instant")cacheSortInstant(map,side);
 
       showCachedNow();
       say("Saving rename...");
@@ -1222,10 +1159,7 @@ ${names.map(n=>`    <img src="img/${map}/${n}">`).join("\n")}
       try{
         const committed=await mutate(
           map,
-          t=>{
-            const next=retitle(t,src,nt,title);
-            return loc==="instant"?sortInstantSection(next,side):next;
-          },
+          t=>retitle(t,src,nt,title),
           "Rename lineup"
         );
         syncCommittedDoc(map,committed,mver);
@@ -1290,7 +1224,6 @@ ${names.map(n=>`    <img src="img/${map}/${n}">`).join("\n")}
 
       if(!cacheRename(map,src,oldTitle,nt))
         return say("Failed: lineup not found in local view.");
-      if(loc==="instant")cacheSortInstant(map,side);
 
       showCachedNow();
       say("Saving rename...");
@@ -1298,10 +1231,7 @@ ${names.map(n=>`    <img src="img/${map}/${n}">`).join("\n")}
       try{
         const committed=await mutate(
           map,
-          t=>{
-            const next=retitle(t,src,nt,oldTitle);
-            return loc==="instant"?sortInstantSection(next,side):next;
-          },
+          t=>retitle(t,src,nt,oldTitle),
           "Rename lineup"
         );
         syncCommittedDoc(map,committed,mver);
@@ -1341,62 +1271,59 @@ ${names.map(n=>`    <img src="img/${map}/${n}">`).join("\n")}
       return e.clientX<r.left+r.width/2;
     };
 
+    const hd=document.createElement("span");
+    hd.className="handle";hd.textContent="⠿ Move";
+    hd.title="Drag to reorder this lineup";hd.draggable=true;
+
+    hd.ondragstart=e=>{
+      drag={k:"art",c,src,title:h.textContent};
+      e.dataTransfer.effectAllowed="move";
+      e.dataTransfer.setData("text/plain","lineup");
+      c.classList.add("dragging");
+    };
+    hd.ondragend=()=>{
+      drag=null;c.classList.remove("dragging");
+      stopDragScroll();clearMarks();
+    };
+    row.prepend(hd);
     h.after(row);
 
-    if(st.loc!=="instant"){
-      const hd=document.createElement("span");
-      hd.className="handle";hd.textContent="⠿ Move";
-      hd.title="Drag to reorder this lineup";hd.draggable=true;
+    c.addEventListener("dragover",e=>{
+      if(!drag||drag.k!=="art"||drag.c===c)return;
+      e.preventDefault();clearMarks();
+      c.classList.add(halfVertical(e,c)?"drop-before":"drop-after");
+    });
 
-      hd.ondragstart=e=>{
-        drag={k:"art",c,src,title:h.textContent};
-        e.dataTransfer.effectAllowed="move";
-        e.dataTransfer.setData("text/plain","lineup");
-        c.classList.add("dragging");
-      };
-      hd.ondragend=()=>{
-        drag=null;c.classList.remove("dragging");
-        stopDragScroll();clearMarks();
-      };
-      row.prepend(hd);
+    c.addEventListener("drop",async e=>{
+      if(!drag||drag.k!=="art"||drag.c===c)return;
+      e.preventDefault();e.stopPropagation();
 
-      c.addEventListener("dragover",e=>{
-        if(!drag||drag.k!=="art"||drag.c===c)return;
-        e.preventDefault();clearMarks();
-        c.classList.add(halfVertical(e,c)?"drop-before":"drop-after");
-      });
+      const d=drag,before=halfVertical(e,c);
+      drag=null;stopDragScroll();clearMarks();
 
-      c.addEventListener("drop",async e=>{
-        if(!drag||drag.k!=="art"||drag.c===c)return;
-        e.preventDefault();e.stopPropagation();
+      const map=st.map;
+      const targetTitle=h.textContent;
+      const mver=nextMapEditVersion(map);
 
-        const d=drag,before=halfVertical(e,c);
-        drag=null;stopDragScroll();clearMarks();
+      if(!cacheMoveArt(map,d.src,d.title,src,targetTitle,before))
+        return say("Failed: lineup order could not be updated locally.");
 
-        const map=st.map;
-        const targetTitle=h.textContent;
-        const mver=nextMapEditVersion(map);
+      showCachedNow();
+      say("Saving new order...");
 
-        if(!cacheMoveArt(map,d.src,d.title,src,targetTitle,before))
-          return say("Failed: lineup order could not be updated locally.");
-
-        showCachedNow();
-        say("Saving new order...");
-
-        try{
-          const committed=await mutate(
-            map,
-            t=>moveArt(t,d.src,d.title,src,targetTitle,before),
-            "Reorder lineups"
-          );
-          syncCommittedDoc(map,committed,mver);
-          if(isCurrentMapEdit(map,mver))say("Order saved.");
-        }catch(err){
-          if(isCurrentMapEdit(map,mver))await rollbackCached(map);
-          say("Failed: "+err.message);
-        }
-      });
-    }
+      try{
+        const committed=await mutate(
+          map,
+          t=>moveArt(t,d.src,d.title,src,targetTitle,before),
+          "Reorder lineups"
+        );
+        syncCommittedDoc(map,committed,mver);
+        if(isCurrentMapEdit(map,mver))say("Order saved.");
+      }catch(err){
+        if(isCurrentMapEdit(map,mver))await rollbackCached(map);
+        say("Failed: "+err.message);
+      }
+    });
 
     const imgs=[...c.querySelectorAll("img")];
     imgs.forEach((im,i)=>{
