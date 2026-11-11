@@ -260,7 +260,8 @@ const RAW_ROOT=
 const parseDoc=t=>new DOMParser().parseFromString(t,"text/html");
 const repoAsset=p=>{
   if(!p||/^(?:https?:|blob:|data:)/i.test(p))return p;
-  return RAW_ROOT+p.replace(/^\.?\//,"");
+  p=p.replace(/^\.?\//,"");
+  return (window.editAsset&&window.editAsset(p))||RAW_ROOT+p;
 };
 
 let st={map:"mirage",side:"t",loc:"instant"};
@@ -287,6 +288,7 @@ function parse(){
   if(ids(LOCS).includes(l))st.loc=l;
 }
 async function load(m){
+  if(window.editLoad){try{return await window.editLoad(m)}catch(e){}}
   const remote=RAW_ROOT+"maps/"+m+".html?v="+Date.now();
 
   try{
@@ -834,7 +836,7 @@ ${names.map(n=>`    <img src="img/${map}/${n}">`).join("\n")}
       .filter(p=>/^img\/[^?#]+$/.test(p)&&!p.includes("..")&&!keep.has(p));
   };
 
-  async function commitNow(msg,plan){
+  async function commitRest(msg,plan){
     const blobs={};
 
     for(let attempt=0;attempt<3;attempt++){
@@ -905,12 +907,126 @@ ${names.map(n=>`    <img src="img/${map}/${n}">`).join("\n")}
     }
   }
 
+  /* Fast path. One GraphQL request creates the whole commit (text, images and deletions). The branch
+     head, and the text of map files we last wrote, are tracked locally, so most saves need no reads.
+     Edit mode also reads map files and images from the repo itself (pinned to a commit), never from a
+     cache, so what you see is what is actually saved. The multi-request REST commit stays as fallback. */
+  let headOid=null,sessionHead=null;
+  const textCache=new Map();
+  const storedToken=()=>{try{return localStorage.getItem("nades-token")||""}catch(e){return ""}};
+  const headNow=async force=>{
+    if(!headOid||force){
+      br=br||await gh("").then(r=>r.default_branch,()=>"main");
+      headOid=(await gh("git/ref/heads/"+br)).object.sha;
+      textCache.clear();
+    }
+    if(!sessionHead)sessionHead=headOid;
+    return headOid;
+  };
+  const gql=async(query,variables)=>{
+    const r=await fetch("https://api.github.com/graphql",{
+      method:"POST",cache:"no-store",
+      headers:{Authorization:"Bearer "+tokForGithub(),"Content-Type":"application/json"},
+      body:JSON.stringify({query,variables})
+    });
+    if(r.status===401)try{localStorage.removeItem("nades-token")}catch(e){}
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok||j.errors){
+      const e=new Error((j.errors&&j.errors.map(x=>x.message).join("; "))||j.message||("GraphQL "+r.status));
+      e.status=r.status;e.gql=true;throw e;
+    }
+    return j.data;
+  };
+  async function commitFast(msg,plan){
+    for(let attempt=0;;attempt++){
+      const head=await headNow(attempt>0);
+      const ctx={
+        read:async p=>{
+          if(textCache.has(p))return textCache.get(p);
+          const t=dec((await gh("contents/"+p+"?ref="+head)).content);
+          textCache.set(p,t);return t;
+        },
+        files:async dir=>{
+          let sha=(await gh("git/commits/"+head)).tree.sha;
+          for(const seg of dir.split("/")){
+            const e=(await gh("git/trees/"+sha)).tree.find(x=>x.path===seg&&x.type==="tree");
+            if(!e)return new Set();
+            sha=e.sha;
+          }
+          return new Set((await gh("git/trees/"+sha)).tree.filter(x=>x.type==="blob").map(x=>x.path));
+        }
+      };
+      const {write={},del=[]}=await plan(ctx);
+      const additions=Object.keys(write).map(p=>({path:p,contents:write[p].text!=null?b64(write[p].text):write[p].b64}));
+      const deletions=del.map(path=>({path}));
+      if(!additions.length&&!deletions.length)return null;
+      try{
+        const d=await gql(
+          "mutation($i:CreateCommitOnBranchInput!){createCommitOnBranch(input:$i){commit{oid}}}",
+          {i:{branch:{repositoryNameWithOwner:R,branchName:br},message:{headline:msg},
+              expectedHeadOid:head,fileChanges:{additions,deletions}}}
+        );
+        headOid=d.createCommitOnBranch.commit.oid;
+        Object.keys(write).forEach(p=>{if(write[p].text!=null)textCache.set(p,write[p].text)});
+        return headOid;
+      }catch(e){
+        if(e.gql&&/expected/i.test(e.message)&&attempt<2){headOid=null;continue}   // branch moved: refresh and retry
+        throw e;
+      }
+    }
+  }
+  async function commitNow(msg,plan){
+    try{return await commitFast(msg,plan)}
+    catch(e){
+      if(!e.gql||/expected/i.test(e.message))throw e;
+      const r=await commitRest(msg,plan);
+      headOid=null;textCache.clear();
+      return r;
+    }
+  }
+
+  window.editLoad=async m=>{
+    if(!storedToken())throw 0;
+    const p="maps/"+m+".html",head=await headNow(false);
+    if(textCache.has(p))return parseDoc(textCache.get(p));
+    const t=dec((await gh("contents/"+p+"?ref="+head)).content);
+    textCache.set(p,t);
+    return parseDoc(t);
+  };
+  window.editAsset=p=>sessionHead?"https://raw.githubusercontent.com/"+R+"/"+sessionHead+"/"+p:null;
+  document.addEventListener("error",async e=>{   // if a commit-pinned image is not served yet, fetch it from the repo API instead
+    const i=e.target,root="https://raw.githubusercontent.com/"+R+"/"+sessionHead+"/";
+    if(!(i instanceof HTMLImageElement)||i.dataset.fb||!sessionHead||!i.src.startsWith(root))return;
+    i.dataset.fb="1";
+    try{
+      const p=i.src.slice(root.length).split("?")[0];
+      const r=await fetch("https://api.github.com/repos/"+R+"/contents/"+p+"?ref="+(headOid||sessionHead),
+        {cache:"no-store",headers:{Authorization:"Bearer "+tokForGithub(),Accept:"application/vnd.github.raw+json"}});
+      if(r.ok)i.src=URL.createObjectURL(await r.blob());
+    }catch(_){}
+  },true);
+
+  /* Save indicator: shows how many changes are still being written, then the commit now at the repo head. */
+  let saving=0;
+  const badge=document.createElement("div");
+  badge.style.cssText="position:fixed;right:14px;bottom:14px;z-index:30;padding:6px 14px;border-radius:999px;font:600 13px 'Segoe UI',system-ui,sans-serif;background:#1c2128;border:1px solid #2e3641;pointer-events:none";
+  document.body.append(badge);
+  const showBadge=()=>{
+    if(saving>0){badge.textContent="Saving "+saving+" change"+(saving>1?"s":"")+"…";badge.style.color="#f2b53a"}
+    else{badge.textContent="✓ All changes saved"+(headOid?" · "+headOid.slice(0,7):"");badge.style.color="#52d38a"}
+  };
+  if(storedToken())headNow(false).then(showBadge,()=>{});
+  addEventListener("beforeunload",e=>{if(saving>0){e.preventDefault();e.returnValue=""}});
+
   const commit=(msg,plan)=>{
+    saving++;showBadge();
     const run=()=>commitNow(msg,plan);
     const job=writeQueue.then(run,run);
     writeQueue=job.catch(()=>{});
+    job.then(()=>{saving--;showBadge()},()=>{saving--;badge.textContent="⚠ A save failed";badge.style.color="#ff6b6b"});
     return job;
   };
+  window.nadesDebug={commit,headNow,textCache,breakHead:()=>{headOid="0".repeat(40)},get head(){return headOid}};
 
   const mutate=async(map,fn,msg)=>{
     let committedText=null;
@@ -1081,6 +1197,8 @@ ${names.map(n=>`    <img src="img/${map}/${n}">`).join("\n")}
       .replace(/^-+|-+$/g,"")
       .slice(0,40)||"lineup";
 
+    const files=pending.slice();
+    let inserted=null;
     try{
       const names=[],write={},urls={};
 
@@ -1097,11 +1215,6 @@ ${names.map(n=>`    <img src="img/${map}/${n}">`).join("\n")}
       const art=mkArt(title,map,names);
       const mp="maps/"+map+".html";
 
-      await commit("Add lineup: "+title,async ctx=>{
-        write[mp]={text:addTo(await ctx.read(mp),side,loc,art)};
-        return {write};
-      });
-
       Object.assign(local,urls);
       if(docs[map]){
         const sec=docs[map].querySelector(
@@ -1110,14 +1223,25 @@ ${names.map(n=>`    <img src="img/${map}/${n}">`).join("\n")}
         if(sec){
           const tp=document.createElement("template");
           tp.innerHTML=art;
-          sec.append(tp.content.firstElementChild);
+          inserted=tp.content.firstElementChild;
+          sec.append(inserted);
         }
       }
-
       pending=[];$("#dt").value="";paint();
       if(st.map===map&&st.side===side&&st.loc===loc)render();
-      say("Saved in one commit. The live site should update shortly.");
+      say("Saving…");
+
+      await commit("Add lineup: "+title,async ctx=>{
+        write[mp]={text:addTo(await ctx.read(mp),side,loc,art)};
+        return {write};
+      });
+      say("Saved. The live site updates shortly.");
     }catch(err){
+      if(inserted){   // the save failed: take the lineup back out and give the images and title back
+        inserted.remove();
+        if(st.map===map&&st.side===side&&st.loc===loc)render();
+        pending=files;dest={map,side,loc};$("#dt").value=title;paint();
+      }
       say("Failed: "+err.message);
     }
   };
